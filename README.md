@@ -12,7 +12,13 @@ Jeu de tir en vue à la première personne avec vagues de monstres et améliorat
 - Les capacités **NOVA PULSE**, **CRYO FIELD**, **AEGIS SHIELD** et **OVERLOAD CORE** s’achètent dans l’atelier. Une capacité peut être équipée et s’active avec le **clic droit** pendant la partie.
 - Deux cartes sont disponibles : **NEXUS** et **FOUNDRY**. La carte sélectionnée est sauvegardée dans le navigateur. Nexus conserve ses quatre mobs standards, tandis que Foundry possède quatre machines personnalisées et plus fortes : **Crawleur de Scorie**, **Rôdeur de Braise**, **Colosse de Laitier** et **Forge-Monarque**. Les variantes de Foundry sont plus rapides, infligent davantage de dégâts, frappent plus souvent et rapportent plus de points.
 
-## Lancer le jeu
+## Jouer en ligne
+
+Le jeu est publié automatiquement sur GitHub Pages : **https://nono433.github.io/NexusBreach/**
+
+Ouvre simplement cette adresse dans un navigateur sur PC. Aucune installation ni téléchargement n’est nécessaire.
+
+## Lancer le jeu en local
 
 Le plus simple : double-clique sur le raccourci **Lance Nexus Breach** créé sur le Bureau, ou sur **`LanceNexusBreach.bat`**.
 
