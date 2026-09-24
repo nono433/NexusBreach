@@ -48,6 +48,10 @@ const ui = {
   shopButton: document.querySelector('#shop-button'),
   gameoverShopButton: document.querySelector('#gameover-shop-button'),
   shopCloseButton: document.querySelector('#shop-close-button'),
+  saveProgressButton: document.querySelector('#save-progress-button'),
+  loadProgressButton: document.querySelector('#load-progress-button'),
+  saveFileInput: document.querySelector('#save-file-input'),
+  saveStatus: document.querySelector('#save-status'),
   menuCredits: document.querySelector('#menu-credits'),
   hudCredits: document.querySelector('#credits-value'),
   sectorValue: document.querySelector('#sector-value'),
@@ -761,7 +765,9 @@ const STORAGE_KEYS = Object.freeze({
   equippedWeapon: 'nexus-breach-equipped-weapon',
   abilities: 'nexus-breach-abilities',
   equippedAbility: 'nexus-breach-equipped-ability',
-  map: 'nexus-breach-map'
+  map: 'nexus-breach-map',
+  saveVersion: 'nexus-breach-save-version',
+  restoreNotice: 'nexus-breach-restore-notice'
 });
 
 let state = GAME_STATE.MENU;
@@ -1030,6 +1036,129 @@ function saveProfile() {
   writeStorage(STORAGE_KEYS.equippedWeapon, equippedWeapon);
   writeStorage(STORAGE_KEYS.abilities, JSON.stringify(ownedAbilities));
   writeStorage(STORAGE_KEYS.equippedAbility, equippedAbility);
+  writeStorage(STORAGE_KEYS.map, String(currentMapIndex));
+  writeStorage(STORAGE_KEYS.saveVersion, '1');
+}
+
+function createProfileBackup() {
+  saveProfile();
+  return {
+    game: 'Nexus Breach',
+    saveVersion: 1,
+    savedAt: new Date().toISOString(),
+    progression: {
+      bestScore,
+      credits,
+      ownedEquipment: { ...ownedEquipment },
+      ownedWeapons: { ...ownedWeapons },
+      equippedWeapon,
+      ownedAbilities: { ...ownedAbilities },
+      equippedAbility,
+      currentMapIndex
+    }
+  };
+}
+
+function sanitizeImportedProfile(data) {
+  if (!data || data.game !== 'Nexus Breach' || data.saveVersion !== 1 || !data.progression) {
+    throw new Error('Ce fichier n’est pas une sauvegarde valide de Nexus Breach.');
+  }
+
+  const progression = data.progression;
+  const equipment = Object.fromEntries(META_EQUIPMENT.map((item) => [item.id, 0]));
+  META_EQUIPMENT.forEach((item) => {
+    const level = Number(progression.ownedEquipment?.[item.id]);
+    if (Number.isInteger(level) && level >= 0) equipment[item.id] = Math.min(level, item.maxLevel);
+  });
+
+  const weapons = { pulse: true };
+  Object.keys(WEAPON_DEFINITIONS).forEach((id) => {
+    if (id === 'pulse' || progression.ownedWeapons?.[id] === true) weapons[id] = true;
+  });
+
+  const abilities = {};
+  Object.keys(ABILITY_DEFINITIONS).forEach((id) => {
+    if (progression.ownedAbilities?.[id] === true) abilities[id] = true;
+  });
+
+  const importedWeapon = WEAPON_DEFINITIONS[progression.equippedWeapon] && weapons[progression.equippedWeapon]
+    ? progression.equippedWeapon
+    : 'pulse';
+  const importedAbility = ABILITY_DEFINITIONS[progression.equippedAbility] && abilities[progression.equippedAbility]
+    ? progression.equippedAbility
+    : '';
+  const importedMap = Number(progression.currentMapIndex);
+
+  return {
+    bestScore: Number.isFinite(Number(progression.bestScore)) ? Math.max(0, Math.round(Number(progression.bestScore))) : 0,
+    credits: Number.isFinite(Number(progression.credits)) ? Math.max(0, Math.round(Number(progression.credits))) : 0,
+    ownedEquipment: equipment,
+    ownedWeapons: weapons,
+    equippedWeapon: importedWeapon,
+    ownedAbilities: abilities,
+    equippedAbility: importedAbility,
+    currentMapIndex: Number.isInteger(importedMap) && MAP_DEFINITIONS[importedMap] ? importedMap : 0
+  };
+}
+
+function applyProfileBackup(profile) {
+  bestScore = profile.bestScore;
+  credits = profile.credits;
+  ownedEquipment = profile.ownedEquipment;
+  ownedWeapons = profile.ownedWeapons;
+  equippedWeapon = profile.equippedWeapon;
+  ownedAbilities = profile.ownedAbilities;
+  equippedAbility = profile.equippedAbility;
+  currentMapIndex = profile.currentMapIndex;
+  saveProfile();
+  resetStats();
+  applyWeaponVisual();
+  updateMapUI();
+  updateCreditsUI();
+  if (state === GAME_STATE.SHOP) renderShop();
+}
+
+function showSaveStatus(message, type = 'info') {
+  if (!ui.saveStatus) return;
+  ui.saveStatus.textContent = message;
+  ui.saveStatus.dataset.state = type;
+  window.setTimeout(() => {
+    if (ui.saveStatus?.textContent === message) {
+      ui.saveStatus.textContent = 'SAUVEGARDE AUTOMATIQUE // ACTIVE';
+      ui.saveStatus.dataset.state = 'info';
+    }
+  }, 4200);
+}
+
+function downloadProfileBackup() {
+  const backup = createProfileBackup();
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const date = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `nexus-breach-sauvegarde-${date}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showSaveStatus('SAUVEGARDE TÉLÉCHARGÉE', 'success');
+}
+
+async function importProfileBackup(file) {
+  if (!file) return;
+  try {
+    if (file.size > 1024 * 1024) throw new Error('Le fichier de sauvegarde est trop volumineux.');
+    const data = JSON.parse(await file.text());
+    const profile = sanitizeImportedProfile(data);
+    applyProfileBackup(profile);
+    writeStorage(STORAGE_KEYS.restoreNotice, 'SAUVEGARDE RESTAURÉE');
+    window.location.reload();
+  } catch (error) {
+    showSaveStatus(error instanceof Error ? error.message.toUpperCase() : 'SAUVEGARDE INVALIDE', 'error');
+  } finally {
+    ui.saveFileInput.value = '';
+  }
 }
 
 function updateMapUI() {
@@ -3025,6 +3154,9 @@ function initEvents() {
   ui.shopButton.addEventListener('click', openShop);
   ui.gameoverShopButton.addEventListener('click', openShop);
   ui.shopCloseButton.addEventListener('click', closeShop);
+  ui.saveProgressButton.addEventListener('click', downloadProfileBackup);
+  ui.loadProgressButton.addEventListener('click', () => ui.saveFileInput.click());
+  ui.saveFileInput.addEventListener('change', () => importProfileBackup(ui.saveFileInput.files?.[0]));
   ui.resumeButton.addEventListener('click', () => {
     if (state !== GAME_STATE.PAUSED) return;
     state = GAME_STATE.PLAYING;
@@ -3076,6 +3208,7 @@ function initEvents() {
   });
   window.addEventListener('keyup', (event) => keys.delete(event.code));
   window.addEventListener('blur', () => keys.clear());
+  window.addEventListener('pagehide', saveProfile);
   document.addEventListener('pointerlockchange', onPointerLockChange);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && state === GAME_STATE.PLAYING && document.pointerLockElement === canvas) document.exitPointerLock();
@@ -3140,6 +3273,11 @@ function init() {
   window.addEventListener('resize', resize);
   resize();
   updateCreditsUI();
+  const restoreNotice = readStorage(STORAGE_KEYS.restoreNotice, '');
+  if (restoreNotice) {
+    writeStorage(STORAGE_KEYS.restoreNotice, '');
+    showSaveStatus(restoreNotice, 'success');
+  }
   ui.soundButton.classList.toggle('muted', !soundEnabled);
 
   window.setTimeout(() => ui.loading.classList.add('done'), 480);

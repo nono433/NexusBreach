@@ -6,6 +6,7 @@ Jeu de tir en vue à la première personne avec vagues de monstres et améliorat
 
 - Quand le joueur meurt, il reçoit des crédits calculés selon la vague, les éliminations, le score, la précision, les headshots, le temps de survie et l’efficacité.
 - Les crédits et l’équipement sont sauvegardés dans le navigateur via `localStorage`.
+- Le menu **ARCHIVE DE PROGRESSION** permet de télécharger un fichier de sauvegarde JSON et de le restaurer sur le même ordinateur ou sur un autre. La sauvegarde contient les crédits, les armes, les capacités, les modules, le meilleur score et la carte sélectionnée.
 - Le bouton **ATELIER // ÉQUIPEMENT** du menu, ou **VISITER L'ATELIER** après une mort, permet d’acheter des bonus permanents.
 - Les modules achetés sont automatiquement actifs au début de la prochaine partie. Les améliorations affichées entre les vagues restent temporaires à la partie en cours.
 - L’arsenal contient **AR-9 PULSE**, **SCATTER-7**, **NOVA-12**, **LANCE-01**, **VECTOR-6**, **PYRO-4**, **FROST-3** et **ARC-9 PLASMA**. Chaque fiche indique les dégâts, la cadence, la précision, la portée, le chargeur, la recharge, le bonus headshot et l’effet spécial. L’arme sélectionnée dans l’atelier est utilisée au prochain lancement.

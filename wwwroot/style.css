@@ -349,6 +349,57 @@ button {
 
 .menu-shop-button { margin-top: 12px; }
 
+.save-panel {
+  width: min(430px, 100%);
+  margin: 12px 0 0 80px;
+  border: 1px solid rgba(98, 255, 154, 0.26);
+  background: rgba(5, 22, 17, 0.62);
+}
+
+.save-panel-heading {
+  display: flex;
+  padding: 10px 12px 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
+
+.save-panel-heading strong {
+  color: var(--green);
+  font-size: 7px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.save-panel-heading strong[data-state="error"] { color: #ff7f98; }
+.save-panel-heading strong[data-state="success"] { color: var(--cyan); }
+
+.save-panel-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid rgba(98, 255, 154, 0.18);
+}
+
+.save-button {
+  min-height: 34px;
+  border: 0;
+  background: rgba(98, 255, 154, 0.06);
+  color: var(--green);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.save-button + .save-button { border-left: 1px solid rgba(98, 255, 154, 0.18); }
+.save-button:hover { background: rgba(98, 255, 154, 0.14); color: var(--white); }
+
 .pointer-note {
   width: min(430px, 100%);
   margin: 12px 0 0 80px;
@@ -975,6 +1026,7 @@ kbd { min-width: 17px; padding: 3px 4px; border: 1px solid rgba(130, 172, 183, 0
   .map-selector,
   .primary-button,
   .secondary-button,
+  .save-panel,
   .pointer-note { margin-left: 0; width: 100%; }
   .brand-mark { display: none; }
   .menu-footer { display: none; }
