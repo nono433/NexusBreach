@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#05080d">
+  <meta name="description" content="Nexus Breach — un FPS de survie contre des vagues de monstres.">
+  <title>Nexus Breach</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%2300f5ff' d='M8 10h12l12 16 12-16h12v44H44V34L32 50 20 34v20H8z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css?v=8">
+</head>
+<body>
+  <div id="game-shell">
+    <canvas id="game-canvas" aria-label="Zone de jeu 3D"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="scanlines" aria-hidden="true"></div>
+    <div id="damage-flash" aria-hidden="true"></div>
+
+    <header id="hud" class="hud hidden" aria-live="polite">
+      <div class="hud-top">
+        <div class="sector-block">
+          <span class="eyebrow">SECTEUR</span>
+          <strong id="sector-value">07 // NEXUS</strong>
+        </div>
+        <div class="wave-readout">
+          <span class="eyebrow">VAGUE</span>
+          <strong id="wave-value">01</strong>
+        </div>
+        <div class="threat-readout">
+          <span class="eyebrow">HOSTILES</span>
+          <strong id="enemy-value">0</strong>
+        </div>
+        <div class="credits-readout">
+          <span class="eyebrow">CRÉDITS</span>
+          <strong id="credits-value">0</strong>
+        </div>
+      </div>
+
+      <div id="wave-banner" class="wave-banner" aria-hidden="true">
+        <span>ALERTE</span>
+        <strong id="wave-banner-text">VAGUE 1</strong>
+      </div>
+
+      <div class="hud-bottom">
+        <section class="health-panel" aria-label="Vie">
+          <div class="panel-heading">
+            <span class="status-dot"></span>
+            <span>INTÉGRITÉ</span>
+            <strong id="health-value">100</strong>
+          </div>
+          <div class="bar-shell health-bar-shell">
+            <div id="health-bar" class="bar-fill"></div>
+          </div>
+          <div id="equipment-list" class="equipment-list" aria-label="Équipement"></div>
+          <div id="ability-readout" class="ability-readout">
+            <div><span>CAPACITÉ // CLIC DROIT</span><strong id="ability-name">AUCUNE</strong></div>
+            <small id="ability-status">ÉQUIPE UNE CAPACITÉ DANS L'ATELIER</small>
+          </div>
+        </section>
+
+        <div class="controls-hint" aria-hidden="true">
+          <span><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> MOUVEMENT</span>
+          <span><kbd>MAJ</kbd> SPRINT</span>
+          <span><kbd>R</kbd> RECHARGER</span>
+          <span><kbd>CLIC DROIT</kbd> CAPACITÉ</span>
+        </div>
+
+        <section class="ammo-panel" aria-label="Munitions">
+          <div class="weapon-name">
+            <span id="weapon-name">AR-9 // PULSE</span>
+            <strong id="weapon-level">NIV. 01</strong>
+          </div>
+          <div class="ammo-readout">
+            <strong id="ammo-value">30</strong>
+            <span>/</span>
+            <span id="reserve-value">∞</span>
+          </div>
+          <div id="reload-status" class="reload-status">SYSTÈME PRÊT</div>
+          <div id="weapon-stats-hud" class="weapon-stats-hud">DMG 25 // CAD 5.4 // 70 M</div>
+        </section>
+      </div>
+
+      <div id="crosshair" class="crosshair" aria-hidden="true">
+        <i class="crosshair-dot"></i>
+        <i class="crosshair-line top"></i>
+        <i class="crosshair-line right"></i>
+        <i class="crosshair-line bottom"></i>
+        <i class="crosshair-line left"></i>
+        <i class="hit-marker"></i>
+      </div>
+
+      <div id="interaction-hint" class="interaction-hint hidden">SÉLECTIONNEZ UNE AMÉLIORATION</div>
+    </header>
+
+    <main id="menu-screen" class="screen active">
+      <div class="menu-grid" aria-hidden="true"></div>
+      <div class="menu-content">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <div>
+            <p class="overline">PROTOCOLE DE SURVIE // 07</p>
+            <h1>NEXUS<br><em>BREACH</em></h1>
+            <p class="tagline">L'ARÈNE EST ACTIVE. LES HOSTILES APPROCHENT.</p>
+          </div>
+        </div>
+
+        <div class="briefing">
+          <div class="briefing-line"><span>MODE</span><strong>ARCADE FPS</strong></div>
+          <div class="briefing-line"><span>OBJECTIF</span><strong>SURVIVRE</strong></div>
+          <div class="briefing-line"><span>OPTIMISATION</span><strong>ÉQUIPEMENT</strong></div>
+          <div class="briefing-line"><span>CRÉDITS DISPONIBLES</span><strong id="menu-credits">0</strong></div>
+        </div>
+
+        <div class="map-selector" aria-label="Choix de la carte">
+          <div class="map-selector-heading">
+            <span>CARTE // SECTEUR</span>
+            <strong id="map-description">Arena initiale du protocole Nexus.</strong>
+          </div>
+          <div class="map-buttons">
+            <button class="map-button active" data-map-index="0" type="button"><span>07</span><strong>NEXUS</strong></button>
+            <button class="map-button" data-map-index="1" type="button"><span>12</span><strong>FOUNDRY</strong></button>
+          </div>
+        </div>
+
+        <button id="start-button" class="primary-button" type="button">
+          <span>LANCER L'OPÉRATION</span>
+          <i aria-hidden="true">→</i>
+        </button>
+        <button id="shop-button" class="secondary-button menu-shop-button" type="button">
+          <span>ATELIER // ÉQUIPEMENT</span>
+          <i aria-hidden="true">＋</i>
+        </button>
+        <p class="pointer-note">Le jeu utilisera votre souris. Appuyez sur Échap pour mettre en pause.</p>
+      </div>
+
+      <div class="menu-footer">
+        <div class="system-status"><i></i> SYSTÈMES OPÉRATIONNELS</div>
+        <div>CASQUE RECOMMANDÉ <span>•</span> V.1.0</div>
+      </div>
+    </main>
+
+    <section id="pause-screen" class="screen compact-screen" aria-label="Pause">
+      <div class="panel pause-panel">
+        <p class="overline">CONNEXION SUSPENDUE</p>
+        <h2>PAUSE</h2>
+        <p>La simulation est figée. Reprenez quand vous êtes prêt.</p>
+        <button id="resume-button" class="primary-button" type="button"><span>REPRENDRE</span><i>→</i></button>
+        <button id="restart-button" class="text-button" type="button">RECOMMENCER L'OPÉRATION</button>
+      </div>
+    </section>
+
+    <section id="upgrade-screen" class="screen upgrade-screen" aria-label="Amélioration de l'équipement">
+      <div class="upgrade-heading">
+        <p class="overline">ZONE SÉCURISÉE // ÉQUIPEMENT DISPONIBLE</p>
+        <div class="upgrade-title-row">
+          <div>
+            <span>VAGUE <strong id="completed-wave">01</strong> NETTOYÉE</span>
+            <h2>AMÉLIOREZ VOTRE <em>ÉQUIPEMENT</em></h2>
+          </div>
+          <div class="upgrade-count">
+            <span>MODULE</span>
+            <strong>01 / 01</strong>
+          </div>
+        </div>
+      </div>
+      <div id="upgrade-options" class="upgrade-options"></div>
+      <p class="upgrade-footer">CHOISISSEZ UN MODULE POUR POURSUIVRE L'OPÉRATION</p>
+    </section>
+
+    <section id="shop-screen" class="screen shop-screen" aria-label="Atelier d'équipement">
+      <div class="shop-panel">
+        <header class="shop-header">
+          <div>
+            <p class="overline">NOYAU DE DÉVELOPPEMENT // PROGRESSION PERMANENTE</p>
+            <h2>ATELIER <em>NEXUS</em></h2>
+            <p>Les crédits sont gagnés à chaque mort selon ta performance. Utilise-les pour installer de nouveaux modules d'équipement.</p>
+          </div>
+          <div class="shop-wallet">
+            <span>SOLDE DISPONIBLE</span>
+            <strong id="shop-credits">0</strong>
+            <small>CRÉDITS</small>
+          </div>
+        </header>
+        <div class="shop-toolbar">
+          <span>PROGRESSION PERMANENTE</span>
+          <strong id="shop-owned-count">1 / 8 ARMES // 0 / 4 CAPACITÉS // 0 / 8 MODULES</strong>
+        </div>
+        <div class="shop-section-heading">
+          <span>ARSENAL</span>
+          <small>ACHÈTE UNE ARME ET ÉQUIPE-LA</small>
+        </div>
+        <div id="shop-weapons" class="shop-items shop-weapons"></div>
+        <div class="shop-section-heading">
+          <span>CAPACITÉS ACTIVES</span>
+          <small>ACTIVE AVEC LE CLIC DROIT</small>
+        </div>
+        <div id="shop-abilities" class="shop-items shop-abilities"></div>
+        <div class="shop-section-heading">
+          <span>MODULES D'ÉQUIPEMENT</span>
+          <small>AMÉLIORATIONS PERMANENTES</small>
+        </div>
+        <div id="shop-items" class="shop-items"></div>
+        <button id="shop-close-button" class="secondary-button shop-close-button" type="button">
+          <span>FERMER L'ATELIER</span>
+          <i aria-hidden="true">×</i>
+        </button>
+      </div>
+    </section>
+
+    <section id="gameover-screen" class="screen compact-screen" aria-label="Fin de partie">
+      <div class="panel gameover-panel">
+        <p class="overline danger">CONNECTION PERDUE</p>
+        <h2>VOUS ÊTES <em>MORT</em></h2>
+        <div class="results-grid">
+          <div><span>VAGUE</span><strong id="final-wave">0</strong></div>
+          <div><span>ÉLIMINATIONS</span><strong id="final-kills">0</strong></div>
+          <div><span>SCORE</span><strong id="final-score">0</strong></div>
+        </div>
+        <div class="reward-banner">
+          <span>RÉCOMPENSE DE MORT</span>
+          <strong id="final-reward">+0 CR</strong>
+          <small id="performance-rating">PERFORMANCE // D</small>
+        </div>
+        <p id="reward-breakdown" class="reward-breakdown">VAGUE // +0 // ÉLIMINATIONS // +0</p>
+        <p id="best-score" class="best-score">MEILLEUR SCORE // 0</p>
+        <button id="retry-button" class="primary-button danger-button" type="button"><span>NOUVELLE TENTATIVE</span><i>↻</i></button>
+        <button id="gameover-shop-button" class="secondary-button shop-action-button" type="button">
+          <span>VISITER L'ATELIER</span>
+          <i aria-hidden="true">＋</i>
+        </button>
+      </div>
+    </section>
+
+    <div id="loading-screen" class="loading-screen">
+      <div class="loader-ring"><span></span></div>
+      <p>INITIALISATION DU NEXUS</p>
+    </div>
+
+    <div id="sound-button" class="sound-button" title="Activer ou couper le son (M)" aria-label="Couper le son">♪</div>
+  </div>
+
+  <script type="module" src="game.js?v=8"></script>
+</body>
+</html>
