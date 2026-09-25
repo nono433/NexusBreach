@@ -10,6 +10,7 @@ const ui = {
   hud: document.querySelector('#hud'),
   startButton: document.querySelector('#start-button'),
   resumeButton: document.querySelector('#resume-button'),
+  quitButton: document.querySelector('#quit-button'),
   restartButton: document.querySelector('#restart-button'),
   retryButton: document.querySelector('#retry-button'),
   upgradeOptions: document.querySelector('#upgrade-options'),
@@ -1173,7 +1174,9 @@ function updateMapUI() {
 
 function selectMap(index) {
   if (!MAP_DEFINITIONS[index] || index === currentMapIndex) return;
-  writeStorage(STORAGE_KEYS.map, String(index));
+  currentMapIndex = index;
+  saveProfile();
+  updateMapUI();
   window.location.reload();
 }
 
@@ -3028,6 +3031,33 @@ function endGame() {
   updateHUD();
 }
 
+function returnToMenu() {
+  if (![GAME_STATE.PLAYING, GAME_STATE.PAUSED, GAME_STATE.UPGRADE].includes(state)) return;
+
+  saveProfile();
+  state = GAME_STATE.MENU;
+  keys.clear();
+  if (document.pointerLockElement) document.exitPointerLock();
+
+  clearDynamicObjects();
+  shopReturnState = GAME_STATE.MENU;
+  ui.menu.classList.add('active');
+  ui.pause.classList.remove('active');
+  ui.upgrade.classList.remove('active');
+  ui.shop.classList.remove('active');
+  ui.gameover.classList.remove('active');
+  ui.hud.classList.add('hidden');
+  ui.waveBanner.classList.remove('show');
+  ui.interactionHint.classList.add('hidden');
+  weapon.visible = false;
+  damageFlashTimer = 0;
+  waveBannerTimer = 0;
+  ui.damageFlash.style.opacity = '0';
+  updateCreditsUI();
+  updateMapUI();
+  showSaveStatus('SESSION SAUVEGARDÉE // MENU', 'success');
+}
+
 function startNewGame() {
   clearDynamicObjects();
   resetStats();
@@ -3224,6 +3254,7 @@ function initEvents() {
   });
   ui.retryButton.addEventListener('click', startNewGame);
   ui.restartButton.addEventListener('click', startNewGame);
+  ui.quitButton.addEventListener('click', returnToMenu);
   ui.shopButton.addEventListener('click', openShop);
   ui.gameoverShopButton.addEventListener('click', openShop);
   ui.shopCloseButton.addEventListener('click', closeShop);

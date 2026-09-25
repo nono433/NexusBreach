@@ -505,6 +505,11 @@ button {
   margin: 0;
 }
 
+.pause-quit-button {
+  width: 100%;
+  margin: 12px 0 0;
+}
+
 .text-button {
   margin-top: 22px;
   padding: 4px 8px;

@@ -7,7 +7,7 @@
   <meta name="description" content="Nexus Breach — un FPS de survie contre des vagues de monstres.">
   <title>Nexus Breach</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%2300f5ff' d='M8 10h12l12 16 12-16h12v44H44V34L32 50 20 34v20H8z'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
   <div id="game-shell">
@@ -158,6 +158,10 @@
         <h2>PAUSE</h2>
         <p>La simulation est figée. Reprenez quand vous êtes prêt.</p>
         <button id="resume-button" class="primary-button" type="button"><span>REPRENDRE</span><i>→</i></button>
+        <button id="quit-button" class="secondary-button pause-quit-button" type="button">
+          <span>SAUVEGARDER ET QUITTER</span>
+          <i aria-hidden="true">↩</i>
+        </button>
         <button id="restart-button" class="text-button" type="button">RECOMMENCER L'OPÉRATION</button>
       </div>
     </section>
@@ -252,6 +256,6 @@
     <div id="sound-button" class="sound-button" title="Activer ou couper le son (M)" aria-label="Couper le son">♪</div>
   </div>
 
-  <script type="module" src="game.js?v=10"></script>
+  <script type="module" src="game.js?v=11"></script>
 </body>
 </html>
