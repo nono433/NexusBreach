@@ -65,12 +65,12 @@ button {
 
 .vignette {
   z-index: 4;
-  background: radial-gradient(circle at center, transparent 48%, rgba(0, 0, 0, 0.34) 84%, rgba(0, 0, 0, 0.72) 100%);
+  background: radial-gradient(circle at center, transparent 58%, rgba(0, 0, 0, 0.2) 84%, rgba(0, 0, 0, 0.5) 100%);
 }
 
 .scanlines {
   z-index: 20;
-  opacity: 0.1;
+  opacity: 0.075;
   background: repeating-linear-gradient(to bottom, transparent 0, transparent 3px, rgba(135, 243, 255, 0.12) 4px);
   mix-blend-mode: overlay;
 }

@@ -79,14 +79,14 @@ const MAP_DEFINITIONS = [
     name: 'SECTEUR 07 // NEXUS',
     short: 'NEXUS',
     description: 'Arena initiale du protocole Nexus.',
-    background: 0x07131b,
-    fogColor: 0x07131b,
-    fogDensity: 0.022,
-    hemisphereSky: 0x6cdfff,
-    hemisphereGround: 0x120d15,
-    keyLight: 0xb9f5ff,
-    floorColor: 0x243a45,
-    wallColor: 0x14232c,
+    background: 0x0b1c28,
+    fogColor: 0x0b1c28,
+    fogDensity: 0.02,
+    hemisphereSky: 0x91e7ff,
+    hemisphereGround: 0x25202c,
+    keyLight: 0xd8fbff,
+    floorColor: 0x385662,
+    wallColor: 0x243a46,
     wallEdge: 0x00b9c8,
     alternateEdge: 0xff4d1f,
     coreColor: 0x00eaff,
@@ -119,14 +119,14 @@ const MAP_DEFINITIONS = [
     name: 'SECTEUR 12 // FOUNDRY',
     short: 'FOUNDRY',
     description: 'Zone de forge hostile : quatre machines d’élite, plus résistantes et plus mortelles.',
-    background: 0x160b13,
-    fogColor: 0x160b13,
-    fogDensity: 0.028,
-    hemisphereSky: 0xffb56b,
-    hemisphereGround: 0x160b18,
-    keyLight: 0xffd1ae,
-    floorColor: 0x3b222b,
-    wallColor: 0x281722,
+    background: 0x24121e,
+    fogColor: 0x24121e,
+    fogDensity: 0.024,
+    hemisphereSky: 0xffca88,
+    hemisphereGround: 0x2a1d28,
+    keyLight: 0xffe0c2,
+    floorColor: 0x593844,
+    wallColor: 0x402735,
     wallEdge: 0xff4d22,
     alternateEdge: 0xff2d85,
     coreColor: 0xff4d22,
@@ -752,6 +752,7 @@ const player = {
 let scene;
 let camera;
 let renderer;
+let environmentRenderTarget;
 let weapon;
 let muzzleFlash;
 let muzzleLight;
@@ -1559,9 +1560,9 @@ function makeGridTexture() {
   textureCanvas.width = 512;
   textureCanvas.height = 512;
   const context = textureCanvas.getContext('2d');
-  context.fillStyle = '#0d1a23';
+  context.fillStyle = '#61757e';
   context.fillRect(0, 0, 512, 512);
-  context.strokeStyle = 'rgba(0, 245, 255, 0.14)';
+  context.strokeStyle = 'rgba(0, 245, 255, 0.22)';
   context.lineWidth = 2;
   for (let i = 0; i <= 512; i += 64) {
     context.beginPath();
@@ -1573,17 +1574,56 @@ function makeGridTexture() {
     context.lineTo(512, i);
     context.stroke();
   }
-  context.strokeStyle = 'rgba(0, 245, 255, 0.3)';
+  context.strokeStyle = 'rgba(0, 245, 255, 0.42)';
   context.lineWidth = 4;
   context.strokeRect(4, 4, 504, 504);
   for (let i = 0; i < 70; i += 1) {
-    context.fillStyle = `rgba(140, 235, 245, ${Math.random() * 0.035})`;
+    context.fillStyle = `rgba(190, 245, 250, ${0.025 + Math.random() * 0.055})`;
     context.fillRect(Math.random() * 512, Math.random() * 512, Math.random() * 35, Math.random() * 3);
   }
   const texture = new THREE.CanvasTexture(textureCanvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(7, 7);
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function makeEnvironmentTexture(map) {
+  const textureCanvas = document.createElement('canvas');
+  textureCanvas.width = 256;
+  textureCanvas.height = 128;
+  const context = textureCanvas.getContext('2d');
+  const gradient = context.createLinearGradient(0, 0, 0, 128);
+  const sky = new THREE.Color(map.hemisphereSky);
+  const ground = new THREE.Color(map.hemisphereGround);
+  gradient.addColorStop(0, `#${sky.clone().multiplyScalar(0.8).getHexString()}`);
+  gradient.addColorStop(0.46, `#${new THREE.Color(map.background).lerp(sky, 0.2).getHexString()}`);
+  gradient.addColorStop(0.58, `#${new THREE.Color(map.background).getHexString()}`);
+  gradient.addColorStop(1, `#${ground.clone().multiplyScalar(0.7).getHexString()}`);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 256, 128);
+
+  const lightStrips = [
+    { x: 42, width: 24, color: map.wallEdge, opacity: 0.85 },
+    { x: 142, width: 34, color: map.keyLight, opacity: 0.72 },
+    { x: 218, width: 18, color: map.alternateEdge, opacity: 0.62 }
+  ];
+  lightStrips.forEach((strip) => {
+    const stripGradient = context.createLinearGradient(strip.x, 0, strip.x + strip.width, 0);
+    const color = new THREE.Color(strip.color);
+    stripGradient.addColorStop(0, 'rgba(0,0,0,0)');
+    stripGradient.addColorStop(0.5, `#${color.getHexString()}`);
+    stripGradient.addColorStop(1, 'rgba(0,0,0,0)');
+    context.globalAlpha = strip.opacity;
+    context.fillStyle = stripGradient;
+    context.fillRect(strip.x, 28, strip.width, 34);
+  });
+  context.globalAlpha = 1;
+
+  const texture = new THREE.CanvasTexture(textureCanvas);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
@@ -1600,7 +1640,9 @@ function makeGlowTexture() {
   gradient.addColorStop(1, 'rgba(0,180,255,0)');
   context.fillStyle = gradient;
   context.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(textureCanvas);
+  const texture = new THREE.CanvasTexture(textureCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 function createEnvironment() {
@@ -1608,13 +1650,23 @@ function createEnvironment() {
   scene.background = new THREE.Color(map.background);
   scene.fog = new THREE.FogExp2(map.fogColor, map.fogDensity);
 
-  const hemisphere = new THREE.HemisphereLight(map.hemisphereSky, map.hemisphereGround, 1.45);
+  const environmentSource = makeEnvironmentTexture(map);
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  environmentRenderTarget = pmremGenerator.fromEquirectangular(environmentSource);
+  scene.environment = environmentRenderTarget.texture;
+  scene.environmentIntensity = 0.42;
+  environmentSource.dispose();
+  pmremGenerator.dispose();
+
+  const hemisphere = new THREE.HemisphereLight(map.hemisphereSky, map.hemisphereGround, 1.65);
   scene.add(hemisphere);
 
-  const keyLight = new THREE.DirectionalLight(map.keyLight, 2.05);
+  const keyLight = new THREE.DirectionalLight(map.keyLight, 2.65);
   keyLight.position.set(10, 28, 12);
   keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(1024, 1024);
+  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.shadow.bias = -0.00015;
+  keyLight.shadow.normalBias = 0.025;
   keyLight.shadow.camera.left = -28;
   keyLight.shadow.camera.right = 28;
   keyLight.shadow.camera.top = 28;
@@ -1632,8 +1684,8 @@ function createEnvironment() {
   const floorMaterial = new THREE.MeshStandardMaterial({
     color: map.floorColor,
     map: makeGridTexture(),
-    roughness: 0.72,
-    metalness: 0.55
+    roughness: 0.68,
+    metalness: 0.42
   });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(CONFIG.arenaSize, CONFIG.arenaSize), floorMaterial);
   floor.rotation.x = -Math.PI / 2;
@@ -1648,7 +1700,7 @@ function createEnvironment() {
   underfloor.position.y = -0.04;
   scene.add(underfloor);
 
-  const wallMaterial = new THREE.MeshStandardMaterial({ color: map.wallColor, roughness: 0.46, metalness: 0.78 });
+  const wallMaterial = new THREE.MeshStandardMaterial({ color: map.wallColor, roughness: 0.5, metalness: 0.62 });
   const wallEdgeMaterial = new THREE.MeshStandardMaterial({
     color: 0x0b1b24,
     emissive: map.wallEdge,
@@ -1688,7 +1740,7 @@ function createEnvironment() {
   addWall(22.6, 0, 1.6, 46, orangeEdgeMaterial);
 
   function addCover(x, z, width, depth, height, accent = 0x00eaff) {
-    const material = new THREE.MeshStandardMaterial({ color: 0x0c1820, roughness: 0.42, metalness: 0.8 });
+    const material = new THREE.MeshStandardMaterial({ color: 0x162833, roughness: 0.48, metalness: 0.6 });
     const block = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
     block.position.set(x, height / 2, z);
     block.castShadow = true;
@@ -1719,7 +1771,7 @@ function createEnvironment() {
     addCover(x, z, width, depth, height, accent);
   });
 
-  const pillarMaterial = new THREE.MeshStandardMaterial({ color: map.wallColor, roughness: 0.38, metalness: 0.84 });
+  const pillarMaterial = new THREE.MeshStandardMaterial({ color: map.wallColor, roughness: 0.42, metalness: 0.64 });
   map.pillars.forEach(([x, z], index) => {
     const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.25, 5.8, 8), pillarMaterial);
     pillar.position.set(x, 2.9, z);
@@ -1775,7 +1827,7 @@ function createEnvironment() {
   const core = new THREE.Group();
   const coreBase = new THREE.Mesh(
     new THREE.CylinderGeometry(2.2, 2.8, 0.65, 12),
-    new THREE.MeshStandardMaterial({ color: map.wallColor, metalness: 0.86, roughness: 0.35 })
+    new THREE.MeshStandardMaterial({ color: map.wallColor, metalness: 0.6, roughness: 0.42 })
   );
   coreBase.position.y = 0.33;
   coreBase.castShadow = true;
@@ -1815,7 +1867,16 @@ function createEnvironment() {
   starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
   const stars = new THREE.Points(
     starGeometry,
-    new THREE.PointsMaterial({ color: 0x8eeeff, size: 0.085, transparent: true, opacity: 0.72, sizeAttenuation: true })
+    new THREE.PointsMaterial({
+      color: 0xa8f4ff,
+      size: 0.09,
+      transparent: true,
+      opacity: 0.78,
+      sizeAttenuation: true,
+      fog: false,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
   );
   scene.add(stars);
   animatedRings.push({ mesh: stars, speed: 0.001, axis: 'menu' });
@@ -1950,12 +2011,12 @@ function createEnemyMaterials(template) {
 
 function makeHealthBar(color) {
   const group = new THREE.Group();
-  const background = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x101820, transparent: true, opacity: 0.9, depthTest: false }));
+  const background = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x101820, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false }));
   background.scale.set(1.05, 0.1, 1);
   background.renderOrder = 20;
   group.add(background);
 
-  const fill = new THREE.Sprite(new THREE.SpriteMaterial({ color, depthTest: false }));
+  const fill = new THREE.Sprite(new THREE.SpriteMaterial({ color, depthTest: false, depthWrite: false }));
   fill.center.set(0, 0.5);
   fill.scale.set(0.98, 0.055, 1);
   fill.position.x = -0.49;
@@ -2588,7 +2649,13 @@ function spawnImpact(position, normal, color, count) {
   for (let i = 0; i < count; i += 1) {
     const mesh = new THREE.Mesh(
       new THREE.TetrahedronGeometry(0.035 + Math.random() * 0.035),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.88,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
     );
     mesh.position.copy(position);
     scene.add(mesh);
@@ -2629,7 +2696,13 @@ function killEnemy(enemy) {
   const deathPosition = enemy.root.position.clone().add(new THREE.Vector3(0, 1 * enemy.scale, 0));
   const burst = new THREE.Mesh(
     new THREE.TorusGeometry(0.55 * enemy.scale, 0.045, 5, 24),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending })
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.88,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
   );
   burst.position.copy(deathPosition);
   burst.rotation.x = Math.PI / 2;
@@ -3221,7 +3294,7 @@ function initRenderer() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.18;
+  renderer.toneMappingExposure = 1.32;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.autoClear = true;
