@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#05080d">
   <meta name="description" content="Nexus Breach — un FPS de survie contre des vagues de monstres.">
   <title>Nexus Breach</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%2300f5ff' d='M8 10h12l12 16 12-16h12v44H44V34L32 50 20 34v20H8z'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
   <div id="game-shell">
@@ -62,7 +62,7 @@
           <span><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> MOUVEMENT</span>
           <span><kbd>MAJ</kbd> SPRINT</span>
           <span><kbd>R</kbd> RECHARGER</span>
-          <span><kbd>CLIC DROIT</kbd> CAPACITÉ</span>
+          <span id="right-click-hint"><kbd>CLIC DROIT</kbd> CAPACITÉ</span>
         </div>
 
         <section class="ammo-panel" aria-label="Munitions">
@@ -121,6 +121,21 @@
           <div class="map-buttons">
             <button class="map-button active" data-map-index="0" type="button"><span>07</span><strong>NEXUS</strong></button>
             <button class="map-button" data-map-index="1" type="button"><span>12</span><strong>FOUNDRY</strong></button>
+          </div>
+        </div>
+
+        <div class="class-selector" aria-label="Choix de la classe">
+          <div class="class-selector-heading">
+            <span>CLASSE // OPÉRATEUR</span>
+            <strong id="class-description">Opérateur pulse polyvalent.</strong>
+          </div>
+          <div class="class-buttons">
+            <button class="class-button active" data-class-id="ranger" type="button">
+              <span>01</span><strong>RANGER</strong><small>POLYVALENT</small>
+            </button>
+            <button class="class-button locked" data-class-id="assassin" type="button">
+              <span>02</span><strong>ASSASSIN</strong><small id="assassin-class-status">2 500 CR</small>
+            </button>
           </div>
         </div>
 
@@ -203,6 +218,11 @@
           <strong id="shop-owned-count">1 / 8 ARMES // 0 / 4 CAPACITÉS // 0 / 8 MODULES</strong>
         </div>
         <div class="shop-section-heading">
+          <span>CLASSE D'OPÉRATEUR</span>
+          <small>ACHÈTE ET ÉQUIPE UNE CLASSE</small>
+        </div>
+        <div id="shop-classes" class="shop-items shop-classes"></div>
+        <div class="shop-section-heading">
           <span>ARSENAL</span>
           <small>ACHÈTE UNE ARME ET ÉQUIPE-LA</small>
         </div>
@@ -256,6 +276,6 @@
     <div id="sound-button" class="sound-button" title="Activer ou couper le son (M)" aria-label="Couper le son">♪</div>
   </div>
 
-  <script type="module" src="game.js?v=11"></script>
+  <script type="module" src="game.js?v=12"></script>
 </body>
 </html>

@@ -22,6 +22,7 @@ const ui = {
   healthValue: document.querySelector('#health-value'),
   healthBar: document.querySelector('#health-bar'),
   ammoValue: document.querySelector('#ammo-value'),
+  reserveValue: document.querySelector('#reserve-value'),
   weaponName: document.querySelector('#weapon-name'),
   weaponLevel: document.querySelector('#weapon-level'),
   reloadStatus: document.querySelector('#reload-status'),
@@ -58,6 +59,11 @@ const ui = {
   sectorValue: document.querySelector('#sector-value'),
   mapButtons: Array.from(document.querySelectorAll('[data-map-index]')),
   mapDescription: document.querySelector('#map-description'),
+  classDescription: document.querySelector('#class-description'),
+  classButtons: Array.from(document.querySelectorAll('[data-class-id]')),
+  assassinClassStatus: document.querySelector('#assassin-class-status'),
+  shopClasses: document.querySelector('#shop-classes'),
+  rightClickHint: document.querySelector('#right-click-hint'),
   soundButton: document.querySelector('#sound-button')
 };
 
@@ -156,6 +162,27 @@ const MAP_DEFINITIONS = [
     scoreMultiplier: 1.35
   }
 ];
+
+const PLAYER_CLASSES = Object.freeze({
+  ranger: {
+    id: 'ranger',
+    name: 'Ranger',
+    short: 'RANGER',
+    description: 'Opérateur pulse polyvalent.',
+    price: 0,
+    color: '#00f5ff',
+    icon: '<path d="M32 7v46M15 17l17 15 17-15M18 48l14-16 14 16"/><circle cx="32" cy="32" r="8"/>'
+  },
+  assassin: {
+    id: 'assassin',
+    name: 'Assassin',
+    short: 'ASSASSIN',
+    description: 'Sabres jumelles, frappe rapprochée et dash d’évasion.',
+    price: 2500,
+    color: '#b17cff',
+    icon: '<path d="m13 49 9-4 29-29-5-5-29 29-4 9Z"/><path d="m40 16 8-8 8 8-8 8M9 54l12-4M45 45l10 10"/><path d="m18 27 8 8"/>'
+  }
+});
 
 const GAME_STATE = Object.freeze({
   MENU: 'menu',
@@ -730,6 +757,7 @@ const player = {
   weaponRange: CONFIG.interactionRange,
   weaponPellets: 1,
   weaponSpread: 0,
+  classId: 'ranger',
   abilityId: '',
   abilityCooldown: 0,
   abilityTimer: 0,
@@ -739,6 +767,10 @@ const player = {
   reloadTime: CONFIG.baseReload,
   reloadRemaining: 0,
   fireCooldown: 0,
+  dashCooldown: 0,
+  dashTimer: 0,
+  dashDirection: new THREE.Vector3(),
+  slashTimer: 0,
   regen: 0,
   damageReduction: 0,
   pierce: 0,
@@ -755,6 +787,7 @@ let camera;
 let renderer;
 let environmentRenderTarget;
 let weapon;
+let assassinWeapon;
 let muzzleFlash;
 let muzzleLight;
 let raycaster;
@@ -765,6 +798,8 @@ const STORAGE_KEYS = Object.freeze({
   equipment: 'nexus-breach-equipment',
   weapons: 'nexus-breach-weapons',
   equippedWeapon: 'nexus-breach-equipped-weapon',
+  classes: 'nexus-breach-classes',
+  equippedClass: 'nexus-breach-equipped-class',
   abilities: 'nexus-breach-abilities',
   equippedAbility: 'nexus-breach-equipped-ability',
   map: 'nexus-breach-map',
@@ -784,6 +819,8 @@ let credits = readCredits();
 let ownedEquipment = readOwnedEquipment();
 let ownedWeapons = readOwnedWeapons();
 let equippedWeapon = readEquippedWeapon();
+let ownedClasses = readOwnedClasses();
+let equippedClass = readEquippedClass();
 let ownedAbilities = readOwnedAbilities();
 let equippedAbility = readEquippedAbility();
 let shopReturnState = GAME_STATE.MENU;
@@ -810,6 +847,8 @@ const enemyTargets = [];
 const arenaTargets = [];
 const obstacles = [];
 const particles = [];
+const slashEffects = [];
+const dashTrails = [];
 const tracers = [];
 const ripples = [];
 const animatedRings = [];
@@ -939,6 +978,16 @@ class SoundSystem {
     this.tone(frequency, 0.3, 0.09, abilityId === 'cryo' ? 'triangle' : 'sawtooth', abilityId === 'cryo' ? 280 : 180);
     this.noise(0.16, 0.08, abilityId === 'cryo' ? 3200 : 1400);
   }
+
+  slash() {
+    this.tone(520, 0.11, 0.1, 'triangle', -260);
+    this.noise(0.08, 0.1, 4200);
+  }
+
+  dash() {
+    this.tone(160, 0.18, 0.1, 'sawtooth', 420);
+    this.noise(0.12, 0.09, 2200);
+  }
 }
 
 const audio = new SoundSystem();
@@ -1012,6 +1061,30 @@ function readEquippedWeapon() {
   return WEAPON_DEFINITIONS[saved] && ownedWeapons[saved] ? saved : 'pulse';
 }
 
+function readOwnedClasses() {
+  const classes = { ranger: true, assassin: false };
+  try {
+    const saved = JSON.parse(readStorage(STORAGE_KEYS.classes, '{}'));
+    if (saved?.assassin === true) classes.assassin = true;
+  } catch {
+    // Un inventaire de classes corrompu conserve le Ranger.
+  }
+  return classes;
+}
+
+function readEquippedClass() {
+  const saved = readStorage(STORAGE_KEYS.equippedClass, 'ranger');
+  return PLAYER_CLASSES[saved] && ownedClasses[saved] ? saved : 'ranger';
+}
+
+function ownsClass(id) {
+  return PLAYER_CLASSES[id] && ownedClasses[id] === true;
+}
+
+function getPlayerClassDefinition(id = equippedClass) {
+  return PLAYER_CLASSES[id] || PLAYER_CLASSES.ranger;
+}
+
 function readOwnedAbilities() {
   const owned = {};
   try {
@@ -1036,6 +1109,8 @@ function saveProfile() {
   writeStorage(STORAGE_KEYS.equipment, JSON.stringify(ownedEquipment));
   writeStorage(STORAGE_KEYS.weapons, JSON.stringify(ownedWeapons));
   writeStorage(STORAGE_KEYS.equippedWeapon, equippedWeapon);
+  writeStorage(STORAGE_KEYS.classes, JSON.stringify(ownedClasses));
+  writeStorage(STORAGE_KEYS.equippedClass, equippedClass);
   writeStorage(STORAGE_KEYS.abilities, JSON.stringify(ownedAbilities));
   writeStorage(STORAGE_KEYS.equippedAbility, equippedAbility);
   writeStorage(STORAGE_KEYS.map, String(currentMapIndex));
@@ -1054,6 +1129,8 @@ function createProfileBackup() {
       ownedEquipment: { ...ownedEquipment },
       ownedWeapons: { ...ownedWeapons },
       equippedWeapon,
+      ownedClasses: { ...ownedClasses },
+      equippedClass,
       ownedAbilities: { ...ownedAbilities },
       equippedAbility,
       currentMapIndex
@@ -1089,6 +1166,10 @@ function sanitizeImportedProfile(data) {
   const importedAbility = ABILITY_DEFINITIONS[progression.equippedAbility] && abilities[progression.equippedAbility]
     ? progression.equippedAbility
     : '';
+  const classes = { ranger: true, assassin: progression.ownedClasses?.assassin === true };
+  const importedClass = PLAYER_CLASSES[progression.equippedClass] && classes[progression.equippedClass]
+    ? progression.equippedClass
+    : 'ranger';
   const importedMap = Number(progression.currentMapIndex);
 
   return {
@@ -1097,6 +1178,8 @@ function sanitizeImportedProfile(data) {
     ownedEquipment: equipment,
     ownedWeapons: weapons,
     equippedWeapon: importedWeapon,
+    ownedClasses: classes,
+    equippedClass: importedClass,
     ownedAbilities: abilities,
     equippedAbility: importedAbility,
     currentMapIndex: Number.isInteger(importedMap) && MAP_DEFINITIONS[importedMap] ? importedMap : 0
@@ -1109,6 +1192,8 @@ function applyProfileBackup(profile) {
   ownedEquipment = profile.ownedEquipment;
   ownedWeapons = profile.ownedWeapons;
   equippedWeapon = profile.equippedWeapon;
+  ownedClasses = profile.ownedClasses;
+  equippedClass = profile.equippedClass;
   ownedAbilities = profile.ownedAbilities;
   equippedAbility = profile.equippedAbility;
   currentMapIndex = profile.currentMapIndex;
@@ -1116,6 +1201,7 @@ function applyProfileBackup(profile) {
   resetStats();
   applyWeaponVisual();
   updateMapUI();
+  updateClassUI();
   updateCreditsUI();
   if (state === GAME_STATE.SHOP) renderShop();
 }
@@ -1172,12 +1258,55 @@ function updateMapUI() {
   });
 }
 
+function updateClassUI() {
+  const definition = getPlayerClassDefinition();
+  if (ui.classDescription) ui.classDescription.textContent = definition.description;
+  ui.classButtons.forEach((button) => {
+    const id = button.dataset.classId;
+    const unlocked = ownsClass(id);
+    button.classList.toggle('active', id === equippedClass);
+    button.classList.toggle('locked', !unlocked);
+    button.setAttribute('aria-disabled', String(!unlocked));
+    if (id === 'assassin' && ui.assassinClassStatus) {
+      ui.assassinClassStatus.textContent = unlocked ? (equippedClass === id ? 'ÉQUIPÉE' : 'POSSÉDÉE') : `${formatCredits(PLAYER_CLASSES.assassin.price)} CR`;
+    }
+  });
+  if (ui.rightClickHint) {
+    ui.rightClickHint.innerHTML = equippedClass === 'assassin'
+      ? '<kbd>CLIC DROIT</kbd> / <kbd>ESPACE</kbd> DASH'
+      : '<kbd>CLIC DROIT</kbd> CAPACITÉ';
+  }
+}
+
 function selectMap(index) {
   if (!MAP_DEFINITIONS[index] || index === currentMapIndex) return;
   currentMapIndex = index;
   saveProfile();
   updateMapUI();
   window.location.reload();
+}
+
+function selectPlayerClass(id) {
+  if (!PLAYER_CLASSES[id]) return;
+  if (id === equippedClass) {
+    if (state === GAME_STATE.MENU) {
+      window.setTimeout(() => document.querySelector('#start-button')?.focus(), 0);
+    }
+    return;
+  }
+  if (!ownsClass(id)) {
+    openShop();
+    showSaveStatus('DÉBLOQUEZ L’ASSASSIN POUR 2 500 CR DANS L’ATELIER', 'error');
+    return;
+  }
+  equippedClass = id;
+  player.classId = id;
+  saveProfile();
+  resetStats();
+  applyWeaponVisual();
+  updateClassUI();
+  updateHUD();
+  audio.purchase();
 }
 
 function getWeaponDefinition(id) {
@@ -1265,11 +1394,52 @@ function updateCreditsUI() {
 }
 
 function renderShop() {
-  if (!ui.shopItems || !ui.shopWeapons || !ui.shopAbilities) return;
+  if (!ui.shopItems || !ui.shopWeapons || !ui.shopAbilities || !ui.shopClasses) return;
   ui.shopItems.innerHTML = '';
   ui.shopWeapons.innerHTML = '';
   ui.shopAbilities.innerHTML = '';
+  ui.shopClasses.innerHTML = '';
   let installedCount = 0;
+
+  Object.values(PLAYER_CLASSES).forEach((classDefinition) => {
+    const owned = ownsClass(classDefinition.id);
+    const selected = equippedClass === classDefinition.id;
+    const canBuy = credits >= classDefinition.price;
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = `shop-item class-item${selected ? ' weapon-selected' : ''}`;
+    card.style.setProperty('--shop-color', classDefinition.color);
+    card.disabled = selected || (!owned && !canBuy);
+    card.setAttribute('aria-label', `${classDefinition.name}, ${owned ? 'possédée' : `non possédée, ${formatCredits(classDefinition.price)} crédits`}`);
+    const action = selected
+      ? '<span class="shop-maxed">ÉQUIPÉE</span>'
+      : owned
+        ? '<span class="shop-cost">ÉQUIPER</span><small>ACTIVER</small>'
+        : `<span class="shop-cost">${formatCredits(classDefinition.price)} CR</span><small>ACHETER</small>`;
+    card.innerHTML = `
+      <span class="shop-item-top"><span>${classDefinition.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÉDÉE' : 'VERROUILLÉE'}</span></span>
+      <span class="shop-item-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${classDefinition.icon}</svg></span>
+      <h3>${classDefinition.name}</h3>
+      <p>${classDefinition.description}</p>
+      <span class="shop-item-bottom">${action}</span>
+    `;
+    card.addEventListener('click', () => {
+      if (owned) {
+        equippedClass = classDefinition.id;
+        player.classId = classDefinition.id;
+        saveProfile();
+        resetStats();
+        applyWeaponVisual();
+        updateClassUI();
+        updateHUD();
+        renderShop();
+        audio.purchase();
+      } else {
+        buyPlayerClass(classDefinition.id);
+      }
+    });
+    ui.shopClasses.appendChild(card);
+  });
 
   Object.values(WEAPON_DEFINITIONS).forEach((weapon) => {
     const owned = ownsWeapon(weapon.id);
@@ -1399,8 +1569,26 @@ function renderShop() {
 
   const ownedWeaponsCount = Object.values(ownedWeapons).filter(Boolean).length;
   const ownedAbilitiesCount = Object.values(ownedAbilities).filter(Boolean).length;
-  ui.shopOwnedCount.textContent = `${ownedWeaponsCount} / ${Object.keys(WEAPON_DEFINITIONS).length} ARMES // ${ownedAbilitiesCount} / ${Object.keys(ABILITY_DEFINITIONS).length} CAPACITÉS // ${installedCount} / ${META_EQUIPMENT.length} MODULES`;
+  ui.shopOwnedCount.textContent = `${Object.values(ownedClasses).filter(Boolean).length} / ${Object.keys(PLAYER_CLASSES).length} CLASSES // ${ownedWeaponsCount} / ${Object.keys(WEAPON_DEFINITIONS).length} ARMES // ${ownedAbilitiesCount} / ${Object.keys(ABILITY_DEFINITIONS).length} CAPACITÉS // ${installedCount} / ${META_EQUIPMENT.length} MODULES`;
   updateCreditsUI();
+}
+
+function buyPlayerClass(id) {
+  if (state !== GAME_STATE.SHOP) return;
+  const classDefinition = PLAYER_CLASSES[id];
+  if (!classDefinition || ownsClass(id) || credits < classDefinition.price) return;
+  credits -= classDefinition.price;
+  ownedClasses[id] = true;
+  equippedClass = id;
+  player.classId = id;
+  saveProfile();
+  resetStats();
+  applyWeaponVisual();
+  updateCreditsUI();
+  updateClassUI();
+  updateHUD();
+  renderShop();
+  audio.purchase();
 }
 
 function buyWeapon(id) {
@@ -1471,6 +1659,7 @@ function closeShop() {
   if (state !== GAME_STATE.SHOP) return;
   ui.shop.classList.remove('active');
   state = shopReturnState;
+  applyWeaponVisual();
   if (state === GAME_STATE.DEAD) ui.gameover.classList.add('active');
   else if (state === GAME_STATE.PAUSED) ui.pause.classList.add('active');
   else if (state === GAME_STATE.UPGRADE) ui.upgrade.classList.add('active');
@@ -1498,29 +1687,35 @@ function buyEquipment(id) {
 
 function resetStats() {
   const permanent = getPermanentStats();
+  const classDefinition = getPlayerClassDefinition();
   const weaponDefinition = getWeaponDefinition(equippedWeapon);
+  const isAssassin = classDefinition.id === 'assassin';
+  player.classId = classDefinition.id;
   player.weaponId = weaponDefinition.id;
   player.abilityId = equippedAbility;
   Object.assign(player, {
-    health: CONFIG.baseHealth + permanent.maxHealth,
-    maxHealth: CONFIG.baseHealth + permanent.maxHealth,
-    speed: CONFIG.baseSpeed * permanent.speedMultiplier,
-    damage: weaponDefinition.damage * permanent.damageMultiplier,
-    fireRate: weaponDefinition.fireRate * permanent.fireRateMultiplier,
-    weaponRange: weaponDefinition.range,
-    weaponPellets: weaponDefinition.pellets,
-    weaponSpread: weaponDefinition.spread,
+    health: (isAssassin ? 90 : CONFIG.baseHealth) + permanent.maxHealth,
+    maxHealth: (isAssassin ? 90 : CONFIG.baseHealth) + permanent.maxHealth,
+    speed: (isAssassin ? 7.2 : CONFIG.baseSpeed) * permanent.speedMultiplier,
+    damage: (isAssassin ? 38 : weaponDefinition.damage) * permanent.damageMultiplier,
+    fireRate: (isAssassin ? 2.8 : weaponDefinition.fireRate) * permanent.fireRateMultiplier,
+    weaponRange: isAssassin ? 3.6 : weaponDefinition.range,
+    weaponPellets: isAssassin ? 1 : weaponDefinition.pellets,
+    weaponSpread: isAssassin ? 0 : weaponDefinition.spread,
     abilityCooldown: 0,
     abilityTimer: 0,
     overdriveTimer: 0,
-    magazineSize: weaponDefinition.magazine + permanent.magazine,
-    ammo: weaponDefinition.magazine + permanent.magazine,
-    reloadTime: weaponDefinition.reload * permanent.reloadMultiplier,
+    magazineSize: isAssassin ? 0 : weaponDefinition.magazine + permanent.magazine,
+    ammo: isAssassin ? 0 : weaponDefinition.magazine + permanent.magazine,
+    reloadTime: isAssassin ? 0 : weaponDefinition.reload * permanent.reloadMultiplier,
     reloadRemaining: 0,
     fireCooldown: 0,
+    dashCooldown: 0,
+    dashTimer: 0,
+    slashTimer: 0,
     regen: permanent.regen,
     damageReduction: permanent.damageReduction,
-    pierce: weaponDefinition.pierce + permanent.pierce,
+    pierce: isAssassin ? 0 : weaponDefinition.pierce + permanent.pierce,
     recoil: 0,
     shake: 0,
     invulnerable: 0,
@@ -1551,6 +1746,8 @@ function clearDynamicObjects() {
   particles.splice(0).forEach((particle) => scene.remove(particle.mesh));
   tracers.splice(0).forEach((tracer) => scene.remove(tracer.line));
   ripples.splice(0).forEach((ripple) => scene.remove(ripple.mesh));
+  slashEffects.splice(0).forEach((effect) => scene.remove(effect.mesh));
+  dashTrails.splice(0).forEach((effect) => scene.remove(effect.mesh));
 }
 
 function resetCamera() {
@@ -1885,6 +2082,73 @@ function createEnvironment() {
   animatedRings.push({ mesh: stars, speed: 0.001, axis: 'menu' });
 }
 
+function createAssassinWeapon() {
+  const group = new THREE.Group();
+  group.position.set(0, -0.44, -0.72);
+  group.rotation.set(-0.02, 0, 0);
+  group.visible = false;
+
+  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x120d1d, roughness: 0.3, metalness: 0.78 });
+  const purpleMaterial = new THREE.MeshStandardMaterial({
+    color: 0x24113d,
+    emissive: 0xb17cff,
+    emissiveIntensity: 3.2,
+    roughness: 0.18,
+    metalness: 0.52
+  });
+  const cyanMaterial = new THREE.MeshStandardMaterial({
+    color: 0x06252b,
+    emissive: 0x00f5ff,
+    emissiveIntensity: 2.5,
+    roughness: 0.2,
+    metalness: 0.5
+  });
+
+  function createSaber(side) {
+    const saber = new THREE.Group();
+    saber.position.set(side * 0.34, side < 0 ? 0.03 : -0.03, -0.12);
+    saber.rotation.set(-0.12, side * 0.18, side * 0.12);
+
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.1, 1.28), purpleMaterial);
+    blade.position.set(0, 0, -0.48);
+    saber.add(blade);
+
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.125, 1.3), cyanMaterial);
+    edge.position.set(0, 0.006, -0.48);
+    saber.add(edge);
+
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 4), purpleMaterial);
+    tip.rotation.x = -Math.PI / 2;
+    tip.position.set(0, 0, -1.2);
+    saber.add(tip);
+
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.065, 0.09), cyanMaterial);
+    guard.position.set(0, 0, 0.13);
+    saber.add(guard);
+
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.38, 8), darkMaterial);
+    handle.rotation.x = Math.PI / 2;
+    handle.position.set(0, 0, 0.34);
+    saber.add(handle);
+
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.15, 0.36), darkMaterial);
+    arm.position.set(0, -0.02, 0.57);
+    saber.add(arm);
+
+    return saber;
+  }
+
+  const leftSaber = createSaber(-1);
+  const rightSaber = createSaber(1);
+  group.add(leftSaber, rightSaber);
+  group.userData.leftSaber = leftSaber;
+  group.userData.rightSaber = rightSaber;
+  group.userData.energyMaterial = purpleMaterial;
+  group.userData.accentMaterial = cyanMaterial;
+  camera.add(group);
+  return group;
+}
+
 function createWeapon() {
   const group = new THREE.Group();
   group.position.set(0.48, -0.42, -0.78);
@@ -1967,13 +2231,27 @@ function createWeapon() {
   group.userData.accentMaterial = orangeMaterial;
   group.userData.muzzleFlash = muzzleFlash;
   group.userData.muzzleLight = muzzleLight;
-  applyWeaponVisual(group);
   camera.add(group);
   return group;
 }
 
 function applyWeaponVisual(target = weapon) {
   if (!target) return;
+  const isAssassin = equippedClass === 'assassin';
+  const shouldShow = state === GAME_STATE.PLAYING || state === GAME_STATE.PAUSED;
+  if (isAssassin) {
+    target.visible = false;
+    if (assassinWeapon) {
+      assassinWeapon.visible = shouldShow;
+      assassinWeapon.userData.energyMaterial?.color.setHex(0xb17cff);
+      assassinWeapon.userData.energyMaterial?.emissive.setHex(0xb17cff);
+      assassinWeapon.userData.accentMaterial?.color.setHex(0x00f5ff);
+      assassinWeapon.userData.accentMaterial?.emissive.setHex(0x00f5ff);
+    }
+    return;
+  }
+  target.visible = shouldShow;
+  if (assassinWeapon) assassinWeapon.visible = false;
   const definition = getWeaponDefinition(player.weaponId);
   target.scale.setScalar(definition.visualScale);
   target.userData.energyMaterial?.color.setHex(definition.energyColor);
@@ -2399,6 +2677,8 @@ function moveEntity(position, dx, dz, radius) {
 
 function updatePlayer(delta) {
   player.fireCooldown = Math.max(0, player.fireCooldown - delta);
+  player.dashCooldown = Math.max(0, player.dashCooldown - delta);
+  player.slashTimer = Math.max(0, player.slashTimer - delta);
   player.abilityCooldown = Math.max(0, player.abilityCooldown - delta);
   player.abilityTimer = Math.max(0, player.abilityTimer - delta);
   player.overdriveTimer = Math.max(0, player.overdriveTimer - delta);
@@ -2432,7 +2712,12 @@ function updatePlayer(delta) {
   if (move.lengthSq() > 1) move.normalize();
   player.moving = move.lengthSq() > 0.01;
 
-  if (player.moving) {
+  if (player.dashTimer > 0) {
+    player.dashTimer = Math.max(0, player.dashTimer - delta);
+    player.velocity.copy(player.dashDirection).multiplyScalar(18);
+    player.moving = true;
+    player.bobTime += delta * 18;
+  } else if (player.moving) {
     const sprinting = keys.has('ShiftLeft') || keys.has('ShiftRight');
     const shootSlow = keys.has('Mouse0') ? 0.78 : 1;
     const speed = player.speed * (sprinting ? 1.42 : 1) * shootSlow;
@@ -2443,7 +2728,7 @@ function updatePlayer(delta) {
   }
 
   moveEntity(player.position, player.velocity.x * delta, player.velocity.z * delta, CONFIG.playerRadius);
-  const bob = player.moving ? Math.sin(player.bobTime) * 0.035 : 0;
+  const bob = player.moving ? Math.sin(player.bobTime) * (player.dashTimer > 0 ? 0.018 : 0.035) : 0;
   const shakeX = player.shake * (Math.random() - 0.5) * 0.12;
   const shakeY = player.shake * (Math.random() - 0.5) * 0.12;
   camera.position.set(player.position.x + shakeX, player.position.y + bob + shakeY, player.position.z);
@@ -2452,6 +2737,21 @@ function updatePlayer(delta) {
 }
 
 function updateWeapon(delta) {
+  if (equippedClass === 'assassin') {
+    if (!assassinWeapon) return;
+    const speedBob = player.moving ? Math.sin(player.bobTime * 0.5) * 0.02 : 0;
+    const slashProgress = player.slashTimer > 0 ? 1 - player.slashTimer / 0.28 : 0;
+    const swing = Math.sin(slashProgress * Math.PI);
+    assassinWeapon.position.x += (0 - assassinWeapon.position.x) * Math.min(1, delta * 12);
+    assassinWeapon.position.y += (-0.44 + speedBob - (player.dashTimer > 0 ? 0.08 : 0) - assassinWeapon.position.y) * Math.min(1, delta * 12);
+    assassinWeapon.position.z += (-0.72 - swing * 0.16 - assassinWeapon.position.z) * Math.min(1, delta * 15);
+    assassinWeapon.rotation.x += ((-0.02 + swing * 0.08) - assassinWeapon.rotation.x) * Math.min(1, delta * 16);
+    assassinWeapon.userData.leftSaber.rotation.z += ((-0.12 - swing * 0.7) - assassinWeapon.userData.leftSaber.rotation.z) * Math.min(1, delta * 20);
+    assassinWeapon.userData.rightSaber.rotation.z += ((0.12 + swing * 0.7) - assassinWeapon.userData.rightSaber.rotation.z) * Math.min(1, delta * 20);
+    assassinWeapon.userData.leftSaber.rotation.x += ((-0.12 + swing * 0.3) - assassinWeapon.userData.leftSaber.rotation.x) * Math.min(1, delta * 20);
+    assassinWeapon.userData.rightSaber.rotation.x += ((-0.12 - swing * 0.3) - assassinWeapon.userData.rightSaber.rotation.x) * Math.min(1, delta * 20);
+    return;
+  }
   if (!weapon) return;
   const speedBob = player.moving ? Math.sin(player.bobTime * 0.5) * 0.018 : 0;
   const sprintFactor = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 1 : 0;
@@ -2467,6 +2767,7 @@ function updateWeapon(delta) {
 }
 
 function startReload() {
+  if (player.classId === 'assassin') return;
   if (state !== GAME_STATE.PLAYING || player.reloadRemaining > 0 || player.ammo >= player.magazineSize) return;
   player.reloadRemaining = player.reloadTime;
   audio.reload();
@@ -2515,6 +2816,10 @@ function spawnAbilityEffect(radius, color) {
 
 function activateAbility() {
   if (state !== GAME_STATE.PLAYING) return;
+  if (player.classId === 'assassin') {
+    activateDash();
+    return;
+  }
   const ability = getAbilityDefinition(player.abilityId);
   if (!ability) {
     abilityMessage = "ACHÈTE UNE CAPACITÉ DANS L'ATELIER";
@@ -2567,6 +2872,10 @@ function activateAbility() {
 
 function fireWeapon() {
   if (state !== GAME_STATE.PLAYING || player.fireCooldown > 0 || player.reloadRemaining > 0) return;
+  if (player.classId === 'assassin') {
+    slashAttack();
+    return;
+  }
   if (player.ammo <= 0) {
     startReload();
     return;
@@ -2635,6 +2944,72 @@ function fireWeapon() {
   }
 
   if (player.ammo === 0) window.setTimeout(() => startReload(), 130);
+}
+
+function slashAttack() {
+  if (player.fireCooldown > 0) return;
+  player.fireCooldown = 1 / player.fireRate;
+  player.slashTimer = 0.28;
+  player.recoil = Math.min(1, player.recoil + 0.28);
+  player.shake = Math.min(0.8, player.shake + 0.18);
+  shotsFired += 1;
+  audio.slash();
+  ui.crosshair.classList.remove('hit');
+  void ui.crosshair.offsetWidth;
+  ui.crosshair.classList.add('hit');
+  window.setTimeout(() => ui.crosshair.classList.remove('hit'), 180);
+
+  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const slashCenter = player.position.clone().addScaledVector(forward, 1.25);
+  const slashColor = 0xb17cff;
+  const slash = new THREE.Mesh(
+    new THREE.TorusGeometry(1.35, 0.045, 6, 28, Math.PI * 0.72),
+    new THREE.MeshBasicMaterial({ color: slashColor, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  slash.position.copy(slashCenter);
+  slash.rotation.set(Math.PI / 2, 0, player.yaw + Math.PI * 0.12);
+  scene.add(slash);
+  slashEffects.push({ mesh: slash, life: 0.22, maxLife: 0.22, startScale: 0.55, endScale: 1.35 });
+
+  let hitCount = 0;
+  enemies.forEach((enemy) => {
+    if (enemy.dead || hitCount >= 2) return;
+    const toEnemy = new THREE.Vector3().subVectors(enemy.root.position, player.position);
+    toEnemy.y = 0;
+    const distance = toEnemy.length();
+    if (distance > player.weaponRange + enemy.radius) return;
+    if (distance > 0.001 && toEnemy.normalize().dot(forward) < 0.25) return;
+    const damage = player.damage * (hitCount === 0 ? 1 : 0.75);
+    damageEnemy(enemy, damage, false);
+    hitCount += 1;
+  });
+  if (hitCount === 0) spawnImpact(slashCenter, new THREE.Vector3(0, 1, 0), slashColor, 3);
+}
+
+function activateDash() {
+  if (state !== GAME_STATE.PLAYING || player.classId !== 'assassin' || player.dashCooldown > 0) return;
+  const forwardInput = (keys.has('KeyW') || keys.has('KeyZ') || keys.has('ArrowUp') ? 1 : 0)
+    - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+  const rightInput = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0)
+    - (keys.has('KeyA') || keys.has('KeyQ') || keys.has('ArrowLeft') ? 1 : 0);
+  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  const direction = forward.multiplyScalar(forwardInput).addScaledVector(right, rightInput);
+  if (direction.lengthSq() < 0.01) direction.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  player.dashDirection.copy(direction.normalize());
+  player.dashTimer = 0.2;
+  player.dashCooldown = 2.4;
+  player.invulnerable = Math.max(player.invulnerable, 0.24);
+  player.shake = Math.min(0.8, player.shake + 0.2);
+  audio.dash();
+  const trail = new THREE.Mesh(
+    new THREE.RingGeometry(0.2, 0.34, 16),
+    new THREE.MeshBasicMaterial({ color: 0xb17cff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+  );
+  trail.position.set(player.position.x, 0.08, player.position.z);
+  trail.rotation.x = -Math.PI / 2;
+  scene.add(trail);
+  dashTrails.push({ mesh: trail, life: 0.3, maxLife: 0.3, startScale: 0.6, endScale: 2.4 });
 }
 
 function createTracer(start, end, color) {
@@ -2857,6 +3232,7 @@ function startWave() {
   waveSpawned = 0;
   spawnTimer = 0.4;
   state = GAME_STATE.PLAYING;
+  applyWeaponVisual();
   player.reloadRemaining = 0;
   player.ammo = player.magazineSize;
   ui.waveValue.textContent = String(wave).padStart(2, '0');
@@ -3038,6 +3414,8 @@ function returnToMenu() {
   state = GAME_STATE.MENU;
   keys.clear();
   if (document.pointerLockElement) document.exitPointerLock();
+  weapon.visible = false;
+  if (assassinWeapon) assassinWeapon.visible = false;
 
   clearDynamicObjects();
   shopReturnState = GAME_STATE.MENU;
@@ -3050,11 +3428,13 @@ function returnToMenu() {
   ui.waveBanner.classList.remove('show');
   ui.interactionHint.classList.add('hidden');
   weapon.visible = false;
+  if (assassinWeapon) assassinWeapon.visible = false;
   damageFlashTimer = 0;
   waveBannerTimer = 0;
   ui.damageFlash.style.opacity = '0';
   updateCreditsUI();
   updateMapUI();
+  updateClassUI();
   showSaveStatus('SESSION SAUVEGARDÉE // MENU', 'success');
 }
 
@@ -3072,9 +3452,12 @@ function startNewGame() {
   ui.upgrade.classList.remove('active');
   ui.shop.classList.remove('active');
   shopReturnState = GAME_STATE.MENU;
+  weapon.visible = false;
+  if (assassinWeapon) assassinWeapon.visible = false;
   updateCreditsUI();
+  updateClassUI();
   ui.hud.classList.remove('hidden');
-  weapon.visible = true;
+  applyWeaponVisual();
   audio.ensure();
   startWave();
   requestPointerLock();
@@ -3085,6 +3468,7 @@ function setHudText(element, value) {
 }
 
 function updateHUD() {
+  const isAssassin = player.classId === 'assassin';
   const health = String(Math.ceil(player.health));
   const healthPercent = Math.max(0, player.health / player.maxHealth) * 100;
   const width = `${healthPercent.toFixed(2)}%`;
@@ -3098,30 +3482,43 @@ function updateHUD() {
   }
   ui.healthBar.classList.toggle('low', healthPercent <= 30);
 
-  const ammo = String(player.ammo).padStart(2, '0');
+  const ammo = isAssassin ? '2' : String(player.ammo).padStart(2, '0');
   if (hudCache.ammo !== ammo) {
     ui.ammoValue.textContent = ammo;
     hudCache.ammo = ammo;
   }
-  const weaponName = getWeaponDefinition(player.weaponId).name;
+  if (ui.reserveValue && hudCache.reserve !== '∞') {
+    ui.reserveValue.textContent = '∞';
+    hudCache.reserve = '∞';
+  }
+  const weaponName = isAssassin ? 'SABRES // ASSASSIN' : getWeaponDefinition(player.weaponId).name;
   if (hudCache.weaponName !== weaponName) {
     ui.weaponName.textContent = weaponName;
     hudCache.weaponName = weaponName;
   }
-  const weaponStatsText = `DMG ${Math.round(player.damage)} // CAD ${player.fireRate.toFixed(1)} // ${Math.round(player.weaponRange)} M${player.weaponPellets > 1 ? ` // ${player.weaponPellets} PROJ` : ''}`;
+  const weaponStatsText = isAssassin
+    ? `DMG ${Math.round(player.damage)} // CAD ${player.fireRate.toFixed(1)} // CORPS À CORPS`
+    : `DMG ${Math.round(player.damage)} // CAD ${player.fireRate.toFixed(1)} // ${Math.round(player.weaponRange)} M${player.weaponPellets > 1 ? ` // ${player.weaponPellets} PROJ` : ''}`;
   if (hudCache.weaponStats !== weaponStatsText) {
     ui.weaponStatsHud.textContent = weaponStatsText;
     hudCache.weaponStats = weaponStatsText;
   }
-  const ability = getAbilityDefinition(player.abilityId);
-  const abilityStatus = abilityMessageTimer > 0
-    ? abilityMessage
-    : ability
-      ? player.abilityCooldown > 0
-        ? `RECHARGE // ${player.abilityCooldown.toFixed(1)}s`
-        : 'CLIC DROIT // PRÊT'
-      : "ÉQUIPE UNE CAPACITÉ DANS L'ATELIER";
-  const abilityText = ability ? ability.name : 'AUCUNE';
+
+  const ability = isAssassin ? null : getAbilityDefinition(player.abilityId);
+  const abilityStatus = isAssassin
+    ? abilityMessageTimer > 0
+      ? abilityMessage
+      : player.dashCooldown > 0
+        ? `DASH // ${player.dashCooldown.toFixed(1)}s`
+        : 'CLIC DROIT / ESPACE // DASH PRÊT'
+    : abilityMessageTimer > 0
+      ? abilityMessage
+      : ability
+        ? player.abilityCooldown > 0
+          ? `RECHARGE // ${player.abilityCooldown.toFixed(1)}s`
+          : 'CLIC DROIT // PRÊT'
+        : "ÉQUIPE UNE CAPACITÉ DANS L'ATELIER";
+  const abilityText = isAssassin ? 'DASH OMBRE' : ability ? ability.name : 'AUCUNE';
   if (hudCache.abilityName !== abilityText) {
     ui.abilityName.textContent = abilityText;
     hudCache.abilityName = abilityText;
@@ -3130,9 +3527,23 @@ function updateHUD() {
     ui.abilityStatus.textContent = abilityStatus;
     hudCache.abilityStatus = abilityStatus;
   }
-  ui.abilityReadout.classList.toggle('ready', Boolean(ability) && player.abilityCooldown <= 0);
-  ui.abilityReadout.classList.toggle('cooling', Boolean(ability) && player.abilityCooldown > 0);
-  if (player.reloadRemaining <= 0 && hudCache.reload !== 'SYSTÈME PRÊT') {
+  const abilityReady = isAssassin ? player.dashCooldown <= 0 : Boolean(ability) && player.abilityCooldown <= 0;
+  const abilityCooling = isAssassin ? player.dashCooldown > 0 : Boolean(ability) && player.abilityCooldown > 0;
+  ui.abilityReadout.classList.toggle('ready', abilityReady);
+  ui.abilityReadout.classList.toggle('cooling', abilityCooling);
+
+  if (isAssassin) {
+    const assassinStatus = player.slashTimer > 0
+      ? 'FRAPPE // ACTIVE'
+      : player.dashCooldown > 0
+        ? `DASH // ${player.dashCooldown.toFixed(1)}s`
+        : 'DASH // PRÊT';
+    ui.reloadStatus.classList.toggle('active', player.slashTimer > 0 || player.dashCooldown > 0);
+    if (hudCache.reload !== assassinStatus) {
+      ui.reloadStatus.textContent = assassinStatus;
+      hudCache.reload = assassinStatus;
+    }
+  } else if (player.reloadRemaining <= 0 && hudCache.reload !== 'SYSTÈME PRÊT') {
     ui.reloadStatus.classList.remove('active');
     ui.reloadStatus.textContent = 'SYSTÈME PRÊT';
     hudCache.reload = 'SYSTÈME PRÊT';
@@ -3211,6 +3622,34 @@ function updateEffects(delta) {
     }
   }
 
+  for (let i = slashEffects.length - 1; i >= 0; i -= 1) {
+    const effect = slashEffects[i];
+    effect.life -= delta;
+    const progress = 1 - Math.max(0, effect.life / effect.maxLife);
+    effect.mesh.scale.setScalar(THREE.MathUtils.lerp(effect.startScale, effect.endScale, progress));
+    effect.mesh.material.opacity = Math.max(0, 1 - progress);
+    if (effect.life <= 0) {
+      scene.remove(effect.mesh);
+      effect.mesh.geometry.dispose();
+      effect.mesh.material.dispose();
+      slashEffects.splice(i, 1);
+    }
+  }
+
+  for (let i = dashTrails.length - 1; i >= 0; i -= 1) {
+    const effect = dashTrails[i];
+    effect.life -= delta;
+    const progress = 1 - Math.max(0, effect.life / effect.maxLife);
+    effect.mesh.scale.setScalar(THREE.MathUtils.lerp(effect.startScale, effect.endScale, progress));
+    effect.mesh.material.opacity = Math.max(0, 1 - progress) * 0.7;
+    if (effect.life <= 0) {
+      scene.remove(effect.mesh);
+      effect.mesh.geometry.dispose();
+      effect.mesh.material.dispose();
+      dashTrails.splice(i, 1);
+    }
+  }
+
   if (waveBannerTimer > 0) {
     waveBannerTimer -= delta;
     if (waveBannerTimer <= 0) ui.waveBanner.classList.remove('show');
@@ -3230,7 +3669,13 @@ function updateSceneAnimations(delta) {
 }
 
 function requestPointerLock() {
-  if (canvas.requestPointerLock) canvas.requestPointerLock();
+  if (!canvas.requestPointerLock) return;
+  try {
+    const request = canvas.requestPointerLock();
+    if (request && typeof request.catch === 'function') request.catch(() => {});
+  } catch {
+    // Le navigateur peut refuser le pointer lock dans un onglet headless ou sandboxé.
+  }
 }
 
 function onPointerLockChange() {
@@ -3251,6 +3696,9 @@ function initEvents() {
   ui.startButton.addEventListener('click', startNewGame);
   ui.mapButtons.forEach((button) => {
     button.addEventListener('click', () => selectMap(Number(button.dataset.mapIndex)));
+  });
+  ui.classButtons.forEach((button) => {
+    button.addEventListener('click', () => selectPlayerClass(button.dataset.classId));
   });
   ui.retryButton.addEventListener('click', startNewGame);
   ui.restartButton.addEventListener('click', startNewGame);
@@ -3300,7 +3748,7 @@ function initEvents() {
       closeShop();
       return;
     }
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyQ', 'KeyR', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyQ', 'KeyR', 'Space', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
       event.preventDefault();
     }
     if (event.code === 'KeyM' && !event.repeat) {
@@ -3308,6 +3756,10 @@ function initEvents() {
       ui.soundButton.classList.toggle('muted', !soundEnabled);
     }
     if (event.code === 'KeyR' && !event.repeat && state === GAME_STATE.PLAYING) startReload();
+    if (event.code === 'Space' && !event.repeat && state === GAME_STATE.PLAYING) {
+      event.preventDefault();
+      activateDash();
+    }
     if (state === GAME_STATE.PLAYING) keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => keys.delete(event.code));
@@ -3369,10 +3821,12 @@ function init() {
   initRenderer();
   createEnvironment();
   weapon = createWeapon();
+  assassinWeapon = createAssassinWeapon();
   resetStats();
   applyWeaponVisual();
   resetCamera();
   updateMapUI();
+  updateClassUI();
   initEvents();
   window.addEventListener('resize', resize);
   resize();
