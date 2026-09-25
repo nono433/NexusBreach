@@ -63,7 +63,7 @@ const ui = {
   classButtons: Array.from(document.querySelectorAll('[data-class-id]')),
   assassinClassStatus: document.querySelector('#assassin-class-status'),
   shopClasses: document.querySelector('#shop-classes'),
-  rightClickHint: document.querySelector('#right-click-hint'),
+  abilityHint: document.querySelector('#ability-hint'),
   soundButton: document.querySelector('#sound-button')
 };
 
@@ -79,6 +79,26 @@ const CONFIG = {
   baseReload: 1.45,
   interactionRange: 70
 };
+
+// Un profil automatique évite de rendre le jeu inutilisable sur les GPU intégrés.
+// Le rendu reste net, mais avec une résolution et des ombres mieux adapté au matériel.
+const PERFORMANCE_PROFILE = (() => {
+  const cores = Number(navigator.hardwareConcurrency) || 8;
+  const memory = Number(navigator.deviceMemory) || 8;
+  const lowPower = cores <= 4 || memory <= 4;
+  return {
+    lowPower,
+    maxPixelRatio: lowPower ? 1 : 1.25,
+    shadowMapSize: lowPower ? 512 : 1024,
+    antialias: !lowPower,
+    shadows: !lowPower,
+    targetFps: lowPower ? 50 : 60,
+    hudInterval: lowPower ? 0.1 : 0.05,
+    flowFieldInterval: lowPower ? 0.4 : 0.3,
+    particleScale: lowPower ? 0.55 : 1,
+    enemyAuraLights: !lowPower
+  };
+})();
 
 const MAP_DEFINITIONS = [
   {
@@ -337,6 +357,7 @@ const UPGRADE_DEFINITIONS = {
     short: 'CAPACITÉ',
     color: '#62ff9a',
     max: 6,
+    rangerOnly: true,
     icon: '<path d="M12 15h40v34H12zM20 22h24v20H20zM24 8h16v7M32 27v10m-5-5h10"/>'
   },
   reload: {
@@ -345,6 +366,7 @@ const UPGRADE_DEFINITIONS = {
     short: 'RECHARGE',
     color: '#9b78ff',
     max: 5,
+    rangerOnly: true,
     icon: '<path d="M50 24A18 18 0 1 0 48 39M50 11v15H35M23 31h15M30.5 23.5v15"/>'
   },
   armor: {
@@ -369,6 +391,7 @@ const UPGRADE_DEFINITIONS = {
     short: 'PERFORATION',
     color: '#f6e45c',
     max: 3,
+    rangerOnly: true,
     icon: '<path d="m8 32 17-17 8 8L16 40l-8-8Z"/><path d="m25 15 8-8 8 8-8 8M34 39l8-8 12 12-8 8-12-12Z"/><path d="m45 12 10-5M41 18l12 2"/>'
   },
   repair: {
@@ -386,6 +409,51 @@ const UPGRADE_DEFINITIONS = {
     color: '#72d8ff',
     max: 4,
     icon: '<path d="M32 6v52M8 18l48 28M56 18 8 46M8 32h48"/><circle cx="32" cy="32" r="24"/><circle cx="32" cy="32" r="10"/>'
+  },
+  shadowDamage: {
+    name: 'Lames affûtées',
+    description: '+22 % de dégâts par frappe.',
+    short: 'LAMES',
+    color: '#b17cff',
+    max: 5,
+    assassinOnly: true,
+    icon: '<path d="m8 54 8-5 30-30-5-5-30 30-3 10Z"/><path d="m40 15 9-9 9 9-9 9M10 49l10 5M47 46l9 9"/><path d="m18 25 9 9"/>'
+  },
+  shadowFlurry: {
+    name: 'Tempête jumelle',
+    description: '+18 % de vitesse de frappe.',
+    short: 'FRAPPE',
+    color: '#e0a6ff',
+    max: 4,
+    assassinOnly: true,
+    icon: '<path d="M12 38 42 8M19 47 49 17M8 27l18 18M37 56l18-18"/><path d="m8 53 8-3 27-27-5-5-27 27-3 8Z"/>'
+  },
+  shadowVeil: {
+    name: 'Voile d’ombre',
+    description: '-18 % de recharge du dash.',
+    short: 'DASH',
+    color: '#7c6bff',
+    max: 4,
+    assassinOnly: true,
+    icon: '<path d="M32 7 18 25l14 7-14 7 14 7-14 7 14 7 14-7-14-7 14-7-14-7 14-7-14-7Z"/><path d="M9 15 3 9M55 15l6-6M9 49l-6 6M55 49l6 6"/>'
+  },
+  shadowBlood: {
+    name: 'Sang d’Ombre',
+    description: 'Récupérez 5 PV par élimination.',
+    short: 'SANG',
+    color: '#ff4d83',
+    max: 4,
+    assassinOnly: true,
+    icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M21 29h8l3-6 4 13 3-7h8"/>'
+  },
+  shadowExecution: {
+    name: 'Sentence',
+    description: '+35 % de dégâts contre les hostiles sous 30 % PV.',
+    short: 'EXÉCUTION',
+    color: '#ff3158',
+    max: 3,
+    assassinOnly: true,
+    icon: '<circle cx="32" cy="32" r="22"/><circle cx="32" cy="32" r="11"/><path d="M32 4v12M32 48v12M4 32h12M48 32h12M12 12l9 9M43 43l9 9M52 12l-9 9M21 43l-9 9"/><path d="m27 32 4 4 8-9"/>'
   }
 };
 
@@ -591,7 +659,7 @@ const WEAPON_DEFINITIONS = {
   }
 };
 
-// Capacités actives achetées dans l'atelier et déclenchées avec le clic droit.
+// Capacités actives achetées dans l'atelier et déclenchées avec la touche Espace.
 const ABILITY_DEFINITIONS = {
   nova: {
     id: 'nova',
@@ -768,9 +836,13 @@ const player = {
   reloadRemaining: 0,
   fireCooldown: 0,
   dashCooldown: 0,
+  dashCooldownDuration: 2.4,
   dashTimer: 0,
   dashDirection: new THREE.Vector3(),
   slashTimer: 0,
+  slashTargets: 2,
+  killHeal: 0,
+  executionBonus: 0,
   regen: 0,
   damageReduction: 0,
   pierce: 0,
@@ -779,7 +851,10 @@ const player = {
   shake: 0,
   invulnerable: 0,
   bobTime: 0,
-  moving: false
+  moving: false,
+  moveScratch: new THREE.Vector3(),
+  forwardScratch: new THREE.Vector3(),
+  rightScratch: new THREE.Vector3()
 };
 
 let scene;
@@ -839,6 +914,8 @@ let waveBannerTimer = 0;
 let damageFlashTimer = 0;
 let elapsed = 0;
 let lastFrame = 0;
+let lastRenderedFrame = 0;
+let hudTimer = 0;
 const hudCache = Object.create(null);
 
 const keys = new Set();
@@ -858,6 +935,12 @@ const NAV_CELL_SIZE = 1.5;
 const NAV_GRID_SIZE = 30;
 const navWalkable = new Uint8Array(NAV_GRID_SIZE * NAV_GRID_SIZE);
 const navDistance = new Int32Array(NAV_GRID_SIZE * NAV_GRID_SIZE);
+const navQueue = new Int32Array(NAV_GRID_SIZE * NAV_GRID_SIZE);
+const navCellCenters = Array.from({ length: NAV_GRID_SIZE * NAV_GRID_SIZE }, () => new THREE.Vector3());
+const NAV_DIRECTIONS = [
+  [-1, 0], [1, 0], [0, -1], [0, 1],
+  [-1, -1], [1, -1], [-1, 1], [1, 1]
+];
 let navTimer = 0;
 
 class SoundSystem {
@@ -1271,10 +1354,10 @@ function updateClassUI() {
       ui.assassinClassStatus.textContent = unlocked ? (equippedClass === id ? 'ÉQUIPÉE' : 'POSSÉDÉE') : `${formatCredits(PLAYER_CLASSES.assassin.price)} CR`;
     }
   });
-  if (ui.rightClickHint) {
-    ui.rightClickHint.innerHTML = equippedClass === 'assassin'
-      ? '<kbd>CLIC DROIT</kbd> / <kbd>ESPACE</kbd> DASH'
-      : '<kbd>CLIC DROIT</kbd> CAPACITÉ';
+  if (ui.abilityHint) {
+    ui.abilityHint.innerHTML = equippedClass === 'assassin'
+      ? '<kbd>ESPACE</kbd> DASH'
+      : '<kbd>ESPACE</kbd> CAPACITÉ';
   }
 }
 
@@ -1330,7 +1413,9 @@ function getEquipmentLevel(id) {
 }
 
 function getEquipmentCost(item, nextLevel = getEquipmentLevel(item.id) + 1) {
-  return Math.max(1, Math.round(item.baseCost * item.costGrowth ** Math.max(0, nextLevel - 1)));
+  const level = Math.max(1, nextLevel);
+  const escalatingMultiplier = 1 + (level - 1) * 0.16;
+  return Math.max(1, Math.round((item.baseCost * item.costGrowth ** (level - 1) * escalatingMultiplier) / 5) * 5);
 }
 
 function getPermanentStats() {
@@ -1644,6 +1729,7 @@ function equipAbility(id) {
 function openShop() {
   if (state === GAME_STATE.SHOP) return;
   shopReturnState = state;
+  applyWeaponVisual();
   keys.clear();
   if (document.pointerLockElement) document.exitPointerLock();
   if (state === GAME_STATE.MENU) ui.menu.classList.remove('active');
@@ -1711,8 +1797,12 @@ function resetStats() {
     reloadRemaining: 0,
     fireCooldown: 0,
     dashCooldown: 0,
+    dashCooldownDuration: 2.4,
     dashTimer: 0,
     slashTimer: 0,
+    slashTargets: 2,
+    killHeal: 0,
+    executionBonus: 0,
     regen: permanent.regen,
     damageReduction: permanent.damageReduction,
     pierce: isAssassin ? 0 : weaponDefinition.pierce + permanent.pierce,
@@ -1863,8 +1953,8 @@ function createEnvironment() {
 
   const keyLight = new THREE.DirectionalLight(map.keyLight, 2.65);
   keyLight.position.set(10, 28, 12);
-  keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.castShadow = PERFORMANCE_PROFILE.shadows;
+  keyLight.shadow.mapSize.set(PERFORMANCE_PROFILE.shadowMapSize, PERFORMANCE_PROFILE.shadowMapSize);
   keyLight.shadow.bias = -0.00015;
   keyLight.shadow.normalBias = 0.025;
   keyLight.shadow.camera.left = -28;
@@ -1889,7 +1979,7 @@ function createEnvironment() {
   });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(CONFIG.arenaSize, CONFIG.arenaSize), floorMaterial);
   floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
+  floor.receiveShadow = PERFORMANCE_PROFILE.shadows;
   scene.add(floor);
 
   const underfloor = new THREE.Mesh(
@@ -1919,8 +2009,8 @@ function createEnvironment() {
   function addWall(x, z, width, depth, edgeMaterial = wallEdgeMaterial) {
     const wall = new THREE.Mesh(new THREE.BoxGeometry(width, 5.4, depth), wallMaterial);
     wall.position.set(x, 2.7, z);
-    wall.castShadow = true;
-    wall.receiveShadow = true;
+    wall.castShadow = PERFORMANCE_PROFILE.shadows;
+    wall.receiveShadow = PERFORMANCE_PROFILE.shadows;
     wall.userData.solid = true;
     scene.add(wall);
     arenaTargets.push(wall);
@@ -1943,8 +2033,8 @@ function createEnvironment() {
     const material = new THREE.MeshStandardMaterial({ color: 0x162833, roughness: 0.48, metalness: 0.6 });
     const block = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
     block.position.set(x, height / 2, z);
-    block.castShadow = true;
-    block.receiveShadow = true;
+    block.castShadow = PERFORMANCE_PROFILE.shadows;
+    block.receiveShadow = PERFORMANCE_PROFILE.shadows;
     block.userData.solid = true;
     scene.add(block);
     arenaTargets.push(block);
@@ -1975,8 +2065,8 @@ function createEnvironment() {
   map.pillars.forEach(([x, z], index) => {
     const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.25, 5.8, 8), pillarMaterial);
     pillar.position.set(x, 2.9, z);
-    pillar.castShadow = true;
-    pillar.receiveShadow = true;
+    pillar.castShadow = PERFORMANCE_PROFILE.shadows;
+    pillar.receiveShadow = PERFORMANCE_PROFILE.shadows;
     pillar.userData.solid = true;
     scene.add(pillar);
     arenaTargets.push(pillar);
@@ -2030,8 +2120,8 @@ function createEnvironment() {
     new THREE.MeshStandardMaterial({ color: map.wallColor, metalness: 0.6, roughness: 0.42 })
   );
   coreBase.position.y = 0.33;
-  coreBase.castShadow = true;
-  coreBase.receiveShadow = true;
+  coreBase.castShadow = PERFORMANCE_PROFILE.shadows;
+  coreBase.receiveShadow = PERFORMANCE_PROFILE.shadows;
   core.add(coreBase);
   const energyCore = new THREE.Mesh(
     new THREE.OctahedronGeometry(0.85, 0),
@@ -2088,53 +2178,147 @@ function createAssassinWeapon() {
   group.rotation.set(-0.02, 0, 0);
   group.visible = false;
 
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x120d1d, roughness: 0.3, metalness: 0.78 });
+  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x0d0a16, roughness: 0.24, metalness: 0.92 });
+  const handleMaterial = new THREE.MeshStandardMaterial({ color: 0x241733, roughness: 0.42, metalness: 0.72 });
   const purpleMaterial = new THREE.MeshStandardMaterial({
-    color: 0x24113d,
-    emissive: 0xb17cff,
-    emissiveIntensity: 3.2,
-    roughness: 0.18,
-    metalness: 0.52
+    color: 0x321653,
+    emissive: 0xa855ff,
+    emissiveIntensity: 4.2,
+    roughness: 0.14,
+    metalness: 0.42
   });
   const cyanMaterial = new THREE.MeshStandardMaterial({
     color: 0x06252b,
     emissive: 0x00f5ff,
-    emissiveIntensity: 2.5,
-    roughness: 0.2,
+    emissiveIntensity: 3.4,
+    roughness: 0.16,
     metalness: 0.5
   });
+  const glowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x9b5cff,
+    transparent: true,
+    opacity: 0.2,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  glowMaterial.toneMapped = false;
+  const nodeMaterial = new THREE.MeshBasicMaterial({
+    color: 0xf0d7ff,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  nodeMaterial.toneMapped = false;
+
+  // Une lame extrudée à sections variables donne une silhouette plus nette qu'une simple boîte.
+  const bladeShape = new THREE.Shape();
+  bladeShape.moveTo(-0.07, 0.12);
+  bladeShape.lineTo(0.07, 0.12);
+  bladeShape.lineTo(0.085, -0.92);
+  bladeShape.lineTo(0.038, -1.22);
+  bladeShape.lineTo(0, -1.36);
+  bladeShape.lineTo(-0.038, -1.22);
+  bladeShape.lineTo(-0.085, -0.92);
+  bladeShape.closePath();
+  const bladeGeometry = new THREE.ExtrudeGeometry(bladeShape, {
+    depth: 0.045,
+    steps: 1,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    bevelSize: 0.012,
+    bevelThickness: 0.012
+  });
+  bladeGeometry.rotateX(Math.PI / 2);
+  bladeGeometry.translate(0, -0.0225, 0);
+
+  const spineGeometry = new THREE.BoxGeometry(0.018, 0.026, 1.08);
+  const edgeGeometry = new THREE.BoxGeometry(0.012, 0.032, 1.08);
+  const emitterGeometry = new THREE.CylinderGeometry(0.11, 0.085, 0.16, 8);
+  const handleGeometry = new THREE.CylinderGeometry(0.052, 0.068, 0.4, 8);
+  const gripRingGeometry = new THREE.TorusGeometry(0.071, 0.011, 5, 12);
+  const pommelGeometry = new THREE.OctahedronGeometry(0.085, 0);
+  const nodeGeometry = new THREE.SphereGeometry(0.019, 6, 4);
 
   function createSaber(side) {
     const saber = new THREE.Group();
     saber.position.set(side * 0.34, side < 0 ? 0.03 : -0.03, -0.12);
     saber.rotation.set(-0.12, side * 0.18, side * 0.12);
 
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.1, 1.28), purpleMaterial);
-    blade.position.set(0, 0, -0.48);
+    const blade = new THREE.Mesh(bladeGeometry, purpleMaterial);
+    blade.position.z = 0.02;
+    blade.renderOrder = 2;
     saber.add(blade);
 
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.125, 1.3), cyanMaterial);
-    edge.position.set(0, 0.006, -0.48);
-    saber.add(edge);
+    const bladeGlow = new THREE.Mesh(bladeGeometry, glowMaterial);
+    bladeGlow.position.z = 0.02;
+    bladeGlow.scale.set(1.16, 1.045, 1.025);
+    bladeGlow.renderOrder = 1;
+    saber.add(bladeGlow);
 
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 4), purpleMaterial);
-    tip.rotation.x = -Math.PI / 2;
-    tip.position.set(0, 0, -1.2);
-    saber.add(tip);
+    const spine = new THREE.Mesh(spineGeometry, cyanMaterial);
+    spine.position.set(0, 0, -0.55);
+    saber.add(spine);
 
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.065, 0.09), cyanMaterial);
-    guard.position.set(0, 0, 0.13);
+    const leftEdge = new THREE.Mesh(edgeGeometry, cyanMaterial);
+    leftEdge.position.set(-0.061, 0, -0.55);
+    saber.add(leftEdge);
+    const rightEdge = leftEdge.clone();
+    rightEdge.position.x = 0.061;
+    saber.add(rightEdge);
+
+    const nodePositions = [-0.28, -0.58, -0.88];
+    const energyNodes = nodePositions.map((z) => {
+      const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+      node.position.set(0, 0.052, z);
+      node.userData.baseScale = 1;
+      saber.add(node);
+      return node;
+    });
+
+    const emitter = new THREE.Mesh(emitterGeometry, darkMaterial);
+    emitter.rotation.x = Math.PI / 2;
+    emitter.position.z = 0.18;
+    saber.add(emitter);
+
+    const emitterRing = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.018, 6, 16), cyanMaterial);
+    emitterRing.position.z = 0.105;
+    saber.add(emitterRing);
+    const emitterRingBack = emitterRing.clone();
+    emitterRingBack.position.z = 0.255;
+    saber.add(emitterRingBack);
+
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.075), handleMaterial);
+    guard.position.set(0, 0, 0.29);
     saber.add(guard);
+    const guardWing = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.24, 3), cyanMaterial);
+    guardWing.rotation.z = Math.PI / 2;
+    guardWing.position.set(0, 0, 0.29);
+    saber.add(guardWing);
 
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.38, 8), darkMaterial);
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
     handle.rotation.x = Math.PI / 2;
-    handle.position.set(0, 0, 0.34);
+    handle.position.z = 0.48;
     saber.add(handle);
+    [0.36, 0.48, 0.6].forEach((z) => {
+      const gripRing = new THREE.Mesh(gripRingGeometry, darkMaterial);
+      gripRing.position.z = z;
+      saber.add(gripRing);
+    });
 
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.15, 0.36), darkMaterial);
-    arm.position.set(0, -0.02, 0.57);
+    const pommel = new THREE.Mesh(pommelGeometry, cyanMaterial);
+    pommel.position.z = 0.72;
+    saber.add(pommel);
+
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.34), darkMaterial);
+    arm.position.set(0, -0.02, 0.88);
     saber.add(arm);
+    const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.055, 0.12), handleMaterial);
+    knuckle.position.set(0, 0.065, 0.77);
+    saber.add(knuckle);
 
+    saber.userData.energyNodes = energyNodes;
     return saber;
   }
 
@@ -2145,6 +2329,8 @@ function createAssassinWeapon() {
   group.userData.rightSaber = rightSaber;
   group.userData.energyMaterial = purpleMaterial;
   group.userData.accentMaterial = cyanMaterial;
+  group.userData.glowMaterial = glowMaterial;
+  group.userData.energyNodes = [...leftSaber.userData.energyNodes, ...rightSaber.userData.energyNodes];
   camera.add(group);
   return group;
 }
@@ -2324,12 +2510,13 @@ function createEnemy(typeKey, level) {
 
   const auraLight = new THREE.PointLight(template.color, auraIntensity, auraRange, 2);
   auraLight.position.set(0, 1.15, 0.25);
+  auraLight.visible = PERFORMANCE_PROFILE.enemyAuraLights && (isAlpha || elite);
   root.add(auraLight);
 
   const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.68, 1), materials.body);
   body.position.y = 0.92;
   body.scale.set(...(template.bodyScale || [1.08, 0.9, 0.82]));
-  body.castShadow = true;
+  body.castShadow = PERFORMANCE_PROFILE.shadows;
   root.add(body);
   hitMeshes.push(body);
 
@@ -2344,7 +2531,7 @@ function createEnemy(typeKey, level) {
   const head = new THREE.Mesh(new THREE.OctahedronGeometry(headSize, 0), materials.body);
   head.position.set(0, 1.58, 0.03);
   head.rotation.y = Math.PI / 4;
-  head.castShadow = true;
+  head.castShadow = PERFORMANCE_PROFILE.shadows;
   root.add(head);
   hitMeshes.push(head);
   head.userData.headshot = true;
@@ -2378,7 +2565,7 @@ function createEnemy(typeKey, level) {
     const leg = new THREE.Mesh(legGeometry, materials.armor);
     leg.position.y = -legLength / 2;
     leg.rotation.z = side * 0.28;
-    leg.castShadow = true;
+    leg.castShadow = PERFORMANCE_PROFILE.shadows;
     pivot.add(leg);
     root.add(pivot);
     legPivots.push({ pivot, side, phase: i * Math.PI * 0.5 });
@@ -2410,7 +2597,7 @@ function createEnemy(typeKey, level) {
       shoulder.position.set(x, 1.13 + index * 0.03, 0.03);
       shoulder.scale.set(1.2, 0.58, 0.88);
       shoulder.rotation.z = x < 0 ? -0.28 : 0.28;
-      shoulder.castShadow = true;
+      shoulder.castShadow = PERFORMANCE_PROFILE.shadows;
       root.add(shoulder);
     });
 
@@ -2558,12 +2745,12 @@ function getNavCenter(column, row, target = new THREE.Vector3()) {
 function rebuildFlowField() {
   navWalkable.fill(0);
   navDistance.fill(-1);
-  const cellCenters = new Array(NAV_GRID_SIZE * NAV_GRID_SIZE);
+  const cellCenters = navCellCenters;
   for (let row = 0; row < NAV_GRID_SIZE; row += 1) {
     for (let column = 0; column < NAV_GRID_SIZE; column += 1) {
       const index = row * NAV_GRID_SIZE + column;
-      const center = getNavCenter(column, row);
-      cellCenters[index] = center;
+      const center = cellCenters[index];
+      center.set((column + 0.5) * NAV_CELL_SIZE - CONFIG.arenaSize / 2, 0, (row + 0.5) * NAV_CELL_SIZE - CONFIG.arenaSize / 2);
       if (!isBlocked(center.x, center.z, 0.78)) navWalkable[index] = 1;
     }
   }
@@ -2585,20 +2772,18 @@ function rebuildFlowField() {
     }
   }
 
-  const queue = new Int32Array(navWalkable.length);
   let head = 0;
   let tail = 0;
-  queue[tail++] = start;
+  navQueue[tail++] = start;
   navDistance[start] = 0;
-  const directions = [
-    [-1, 0], [1, 0], [0, -1], [0, 1],
-    [-1, -1], [1, -1], [-1, 1], [1, 1]
-  ];
   while (head < tail) {
-    const current = queue[head++];
+    const current = navQueue[head++];
     const currentColumn = current % NAV_GRID_SIZE;
     const currentRow = Math.floor(current / NAV_GRID_SIZE);
-    for (const [columnOffset, rowOffset] of directions) {
+    for (let directionIndex = 0; directionIndex < NAV_DIRECTIONS.length; directionIndex += 1) {
+      const direction = NAV_DIRECTIONS[directionIndex];
+      const columnOffset = direction[0];
+      const rowOffset = direction[1];
       const column = currentColumn + columnOffset;
       const row = currentRow + rowOffset;
       if (column < 0 || column >= NAV_GRID_SIZE || row < 0 || row >= NAV_GRID_SIZE) continue;
@@ -2610,12 +2795,12 @@ function rebuildFlowField() {
         if (!navWalkable[horizontal] || !navWalkable[vertical]) continue;
       }
       navDistance[next] = navDistance[current] + 1;
-      queue[tail++] = next;
+      navQueue[tail++] = next;
     }
   }
 }
 
-function getFlowDirection(position) {
+function getFlowDirection(position, target = new THREE.Vector3()) {
   const currentCell = getNavIndex(position.x, position.z);
   let current = currentCell.index;
   if (!navWalkable[current] || navDistance[current] < 0) {
@@ -2663,9 +2848,9 @@ function getFlowDirection(position) {
     }
   }
 
-  const target = getNavCenter(next % NAV_GRID_SIZE, Math.floor(next / NAV_GRID_SIZE));
-  const direction = new THREE.Vector3(target.x - position.x, 0, target.z - position.z);
-  return direction.lengthSq() > 0.001 ? direction.normalize() : null;
+  const targetCell = getNavCenter(next % NAV_GRID_SIZE, Math.floor(next / NAV_GRID_SIZE), target);
+  targetCell.set(targetCell.x - position.x, 0, targetCell.z - position.z);
+  return targetCell.lengthSq() > 0.001 ? targetCell.normalize() : null;
 }
 
 function moveEntity(position, dx, dz, radius) {
@@ -2679,6 +2864,15 @@ function updatePlayer(delta) {
   player.fireCooldown = Math.max(0, player.fireCooldown - delta);
   player.dashCooldown = Math.max(0, player.dashCooldown - delta);
   player.slashTimer = Math.max(0, player.slashTimer - delta);
+  if (player.classId === 'assassin' && assassinWeapon) {
+    const pulse = 0.5 + Math.sin(elapsed * 7) * 0.5;
+    assassinWeapon.userData.energyMaterial.emissiveIntensity = 3.6 + pulse * 1.8 + (player.slashTimer > 0 ? 2.4 : 0);
+    assassinWeapon.userData.glowMaterial.opacity = 0.14 + pulse * 0.1 + (player.slashTimer > 0 ? 0.12 : 0);
+    assassinWeapon.userData.energyNodes.forEach((node, index) => {
+      const nodePulse = 0.75 + Math.sin(elapsed * 9 + index * 1.7) * 0.25;
+      node.scale.setScalar(nodePulse);
+    });
+  }
   player.abilityCooldown = Math.max(0, player.abilityCooldown - delta);
   player.abilityTimer = Math.max(0, player.abilityTimer - delta);
   player.overdriveTimer = Math.max(0, player.overdriveTimer - delta);
@@ -2705,9 +2899,9 @@ function updatePlayer(delta) {
     - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
   const rightInput = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0)
     - (keys.has('KeyA') || keys.has('KeyQ') || keys.has('ArrowLeft') ? 1 : 0);
-  const move = new THREE.Vector3();
-  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
-  const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  const move = player.moveScratch.set(0, 0, 0);
+  const forward = player.forwardScratch.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const right = player.rightScratch.set(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
   move.addScaledVector(forward, forwardInput).addScaledVector(right, rightInput);
   if (move.lengthSq() > 1) move.normalize();
   player.moving = move.lengthSq() > 0.01;
@@ -2724,7 +2918,7 @@ function updatePlayer(delta) {
     player.velocity.lerp(move.multiplyScalar(speed), Math.min(1, delta * 11));
     player.bobTime += delta * (sprinting ? 13 : 9.5);
   } else {
-    player.velocity.lerp(new THREE.Vector3(), Math.min(1, delta * 13));
+    player.velocity.multiplyScalar(Math.max(0, 1 - delta * 13));
   }
 
   moveEntity(player.position, player.velocity.x * delta, player.velocity.z * delta, CONFIG.playerRadius);
@@ -2954,10 +3148,6 @@ function slashAttack() {
   player.shake = Math.min(0.8, player.shake + 0.18);
   shotsFired += 1;
   audio.slash();
-  ui.crosshair.classList.remove('hit');
-  void ui.crosshair.offsetWidth;
-  ui.crosshair.classList.add('hit');
-  window.setTimeout(() => ui.crosshair.classList.remove('hit'), 180);
 
   const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const slashCenter = player.position.clone().addScaledVector(forward, 1.25);
@@ -2972,18 +3162,26 @@ function slashAttack() {
   slashEffects.push({ mesh: slash, life: 0.22, maxLife: 0.22, startScale: 0.55, endScale: 1.35 });
 
   let hitCount = 0;
-  enemies.forEach((enemy) => {
-    if (enemy.dead || hitCount >= 2) return;
+  for (const enemy of [...enemies]) {
+    if (enemy.dead || hitCount >= player.slashTargets) continue;
     const toEnemy = new THREE.Vector3().subVectors(enemy.root.position, player.position);
     toEnemy.y = 0;
     const distance = toEnemy.length();
-    if (distance > player.weaponRange + enemy.radius) return;
-    if (distance > 0.001 && toEnemy.normalize().dot(forward) < 0.25) return;
-    const damage = player.damage * (hitCount === 0 ? 1 : 0.75);
+    if (distance > player.weaponRange + enemy.radius) continue;
+    if (distance > 0.001 && toEnemy.normalize().dot(forward) < 0.25) continue;
+    const executionMultiplier = player.executionBonus > 0 && enemy.hp <= enemy.maxHealth * 0.3 ? player.executionBonus : 1;
+    const damage = player.damage * (hitCount === 0 ? 1 : 0.75) * executionMultiplier;
     damageEnemy(enemy, damage, false);
     hitCount += 1;
-  });
-  if (hitCount === 0) spawnImpact(slashCenter, new THREE.Vector3(0, 1, 0), slashColor, 3);
+  }
+  if (hitCount > 0) {
+    ui.crosshair.classList.remove('hit');
+    void ui.crosshair.offsetWidth;
+    ui.crosshair.classList.add('hit');
+    window.setTimeout(() => ui.crosshair.classList.remove('hit'), 180);
+  } else {
+    spawnImpact(slashCenter, new THREE.Vector3(0, 1, 0), slashColor, 3);
+  }
 }
 
 function activateDash() {
@@ -2998,8 +3196,8 @@ function activateDash() {
   if (direction.lengthSq() < 0.01) direction.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   player.dashDirection.copy(direction.normalize());
   player.dashTimer = 0.2;
-  player.dashCooldown = 2.4;
-  player.invulnerable = Math.max(player.invulnerable, 0.24);
+  player.dashCooldown = player.dashCooldownDuration;
+  player.invulnerable = Math.max(player.invulnerable, 0.24 + (player.upgrades.shadowVeil || 0) * 0.035);
   player.shake = Math.min(0.8, player.shake + 0.2);
   audio.dash();
   const trail = new THREE.Mesh(
@@ -3021,6 +3219,7 @@ function createTracer(start, end, color) {
 }
 
 function spawnImpact(position, normal, color, count) {
+  count = Math.max(1, Math.round(count * PERFORMANCE_PROFILE.particleScale));
   const worldNormal = normal.clone();
   if (worldNormal.lengthSq() < 0.001 || !Number.isFinite(worldNormal.x)) worldNormal.set(0, 1, 0);
   worldNormal.normalize();
@@ -3087,7 +3286,7 @@ function killEnemy(enemy) {
   scene.add(burst);
   ripples.push({ mesh: burst, life: 0.45, maxLife: 0.45, startScale: 0.6, endScale: 2.2 * enemy.scale });
 
-  for (let i = 0; i < 11; i += 1) {
+  for (let i = 0; i < Math.max(5, Math.round(11 * PERFORMANCE_PROFILE.particleScale)); i += 1) {
     const mesh = new THREE.Mesh(
       new THREE.TetrahedronGeometry(0.045 + Math.random() * 0.08),
       new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0xffffff : color })
@@ -3100,6 +3299,9 @@ function killEnemy(enemy) {
     particles.push({ mesh, velocity, life: 0.45 + Math.random() * 0.35, maxLife: 0.8 });
   }
 
+  if (player.classId === 'assassin' && player.killHeal > 0) {
+    player.health = Math.min(player.maxHealth, player.health + player.killHeal);
+  }
   const index = enemies.indexOf(enemy);
   if (index >= 0) enemies.splice(index, 1);
   enemy.hitMeshes.forEach((mesh) => {
@@ -3128,7 +3330,7 @@ function updateEnemies(delta) {
   navTimer -= delta;
   if (navTimer <= 0) {
     rebuildFlowField();
-    navTimer = 0.18;
+    navTimer = PERFORMANCE_PROFILE.flowFieldInterval;
   }
 
   for (let i = enemies.length - 1; i >= 0; i -= 1) {
@@ -3256,15 +3458,22 @@ function completeWave() {
 }
 
 function getUpgradeChoices() {
+  const isAssassin = player.classId === 'assassin';
   const available = Object.entries(UPGRADE_DEFINITIONS)
-    .filter(([key, definition]) => player.upgrades[key] < definition.max)
+    .filter(([key, definition]) => {
+      if (player.upgrades[key] >= definition.max) return false;
+      if (definition.assassinOnly && !isAssassin) return false;
+      if (definition.rangerOnly && isAssassin) return false;
+      return true;
+    })
     .map(([key, definition]) => ({ key, ...definition }));
   for (let i = available.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [available[i], available[j]] = [available[j], available[i]];
   }
   while (available.length < 3) {
-    available.push({ key: 'repair', ...UPGRADE_DEFINITIONS.repair });
+    const fallbackKey = isAssassin ? 'shadowDamage' : 'damage';
+    available.push({ key: fallbackKey, ...UPGRADE_DEFINITIONS[fallbackKey] });
   }
   return available.slice(0, 3);
 }
@@ -3276,13 +3485,13 @@ function showUpgradeChoices() {
     const currentLevel = player.upgrades[upgrade.key];
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'upgrade-card';
+    button.className = `upgrade-card${upgrade.assassinOnly ? ' assassin-upgrade' : ''}`;
     button.style.setProperty('--card-color', upgrade.color);
     const pips = Array.from({ length: upgrade.max }, (_, pipIndex) => `<i class="${pipIndex <= currentLevel ? 'active' : ''}"></i>`).join('');
     button.innerHTML = `
       <span class="card-index">OPT_0${index + 1} // ${upgrade.short}</span>
       <span class="card-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${upgrade.icon}</svg></span>
-      <span class="card-rarity">AMÉLIORATION // NIVEAU ${currentLevel + 1}</span>
+      <span class="card-rarity">${upgrade.assassinOnly ? 'AMÉLIORATION // ASSASSIN' : `AMÉLIORATION // NIVEAU ${currentLevel + 1}`}</span>
       <h3>${upgrade.name}</h3>
       <p>${upgrade.description}</p>
       <span class="card-footer"><span class="level-pips">${pips}</span><span>INSTALLER →</span></span>
@@ -3297,14 +3506,30 @@ function showUpgradeChoices() {
 
 function chooseUpgrade(key) {
   if (state !== GAME_STATE.UPGRADE) return;
-  player.upgrades[key] += 1;
   const definition = UPGRADE_DEFINITIONS[key];
+  if (!definition || player.upgrades[key] >= definition.max) return;
+  player.upgrades[key] += 1;
   switch (key) {
     case 'damage':
       player.damage *= 1.32;
       break;
     case 'fireRate':
       player.fireRate *= 1.24;
+      break;
+    case 'shadowDamage':
+      player.damage *= 1.22;
+      break;
+    case 'shadowFlurry':
+      player.fireRate *= 1.18;
+      break;
+    case 'shadowVeil':
+      player.dashCooldownDuration = Math.max(1.2, player.dashCooldownDuration * 0.82);
+      break;
+    case 'shadowBlood':
+      player.killHeal += 5;
+      break;
+    case 'shadowExecution':
+      player.executionBonus = 1 + (player.upgrades.shadowExecution || 0) * 0.35;
       break;
     case 'magazine':
       player.magazineSize += 8;
@@ -3510,13 +3735,13 @@ function updateHUD() {
       ? abilityMessage
       : player.dashCooldown > 0
         ? `DASH // ${player.dashCooldown.toFixed(1)}s`
-        : 'CLIC DROIT / ESPACE // DASH PRÊT'
+        : 'ESPACE // DASH PRÊT'
     : abilityMessageTimer > 0
       ? abilityMessage
       : ability
         ? player.abilityCooldown > 0
           ? `RECHARGE // ${player.abilityCooldown.toFixed(1)}s`
-          : 'CLIC DROIT // PRÊT'
+          : 'ESPACE // PRÊT'
         : "ÉQUIPE UNE CAPACITÉ DANS L'ATELIER";
   const abilityText = isAssassin ? 'DASH OMBRE' : ability ? ability.name : 'AUCUNE';
   if (hudCache.abilityName !== abilityText) {
@@ -3531,6 +3756,8 @@ function updateHUD() {
   const abilityCooling = isAssassin ? player.dashCooldown > 0 : Boolean(ability) && player.abilityCooldown > 0;
   ui.abilityReadout.classList.toggle('ready', abilityReady);
   ui.abilityReadout.classList.toggle('cooling', abilityCooling);
+  const abilityHeading = ui.abilityReadout.querySelector('span');
+  if (abilityHeading) abilityHeading.textContent = isAssassin ? 'DASH // ESPACE' : 'CAPACITÉ // ESPACE';
 
   if (isAssassin) {
     const assassinStatus = player.slashTimer > 0
@@ -3543,10 +3770,12 @@ function updateHUD() {
       ui.reloadStatus.textContent = assassinStatus;
       hudCache.reload = assassinStatus;
     }
-  } else if (player.reloadRemaining <= 0 && hudCache.reload !== 'SYSTÈME PRÊT') {
+  } else if (player.reloadRemaining <= 0) {
     ui.reloadStatus.classList.remove('active');
-    ui.reloadStatus.textContent = 'SYSTÈME PRÊT';
-    hudCache.reload = 'SYSTÈME PRÊT';
+    if (hudCache.reload !== 'SYSTÈME PRÊT') {
+      ui.reloadStatus.textContent = 'SYSTÈME PRÊT';
+      hudCache.reload = 'SYSTÈME PRÊT';
+    }
   }
 
   const permanentLevels = Object.values(ownedEquipment).reduce((sum, level) => sum + level, 0);
@@ -3732,7 +3961,6 @@ function initEvents() {
   });
   canvas.addEventListener('contextmenu', (event) => {
     event.preventDefault();
-    activateAbility();
   });
 
   document.addEventListener('mousemove', (event) => {
@@ -3748,9 +3976,8 @@ function initEvents() {
       closeShop();
       return;
     }
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyQ', 'KeyR', 'Space', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
-      event.preventDefault();
-    }
+    const gameplayKey = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyQ', 'KeyR', 'Space', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code);
+    if (gameplayKey && state === GAME_STATE.PLAYING) event.preventDefault();
     if (event.code === 'KeyM' && !event.repeat) {
       audio.setEnabled(!soundEnabled);
       ui.soundButton.classList.toggle('muted', !soundEnabled);
@@ -3758,7 +3985,7 @@ function initEvents() {
     if (event.code === 'KeyR' && !event.repeat && state === GAME_STATE.PLAYING) startReload();
     if (event.code === 'Space' && !event.repeat && state === GAME_STATE.PLAYING) {
       event.preventDefault();
-      activateDash();
+      activateAbility();
     }
     if (state === GAME_STATE.PLAYING) keys.add(event.code);
   });
@@ -3772,13 +3999,13 @@ function initEvents() {
 }
 
 function initRenderer() {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: PERFORMANCE_PROFILE.antialias, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, PERFORMANCE_PROFILE.maxPixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.32;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = PERFORMANCE_PROFILE.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.autoClear = true;
 }
@@ -3786,13 +4013,16 @@ function initRenderer() {
 function resize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, PERFORMANCE_PROFILE.maxPixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 function frame(time) {
+  const minFrameTime = 1000 / PERFORMANCE_PROFILE.targetFps;
+  if (time - lastRenderedFrame < minFrameTime - 0.5) return;
   const delta = Math.min(0.05, lastFrame ? (time - lastFrame) / 1000 : 1 / 60);
   lastFrame = time;
+  lastRenderedFrame = time;
   elapsed += delta;
 
   if (state === GAME_STATE.MENU) {
@@ -3804,7 +4034,11 @@ function frame(time) {
     updatePlayer(delta);
     updateEnemies(delta);
     updateWave(delta);
-    updateHUD();
+    hudTimer -= delta;
+    if (hudTimer <= 0) {
+      updateHUD();
+      hudTimer = PERFORMANCE_PROFILE.hudInterval;
+    }
   }
 
   updateEffects(delta);

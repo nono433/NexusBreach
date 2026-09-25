@@ -633,6 +633,9 @@ button {
 .card-visual::after { inset: 10px; border-style: dashed; opacity: 0.5; transform: rotate(22.5deg); }
 
 .card-rarity { color: var(--card-color); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.15em; }
+.upgrade-card.assassin-upgrade { background: linear-gradient(160deg, rgba(177, 124, 255, 0.16), transparent 52%), rgba(15, 8, 25, 0.94); }
+.upgrade-card.assassin-upgrade .card-visual { filter: drop-shadow(0 0 18px rgba(177, 124, 255, 0.48)); }
+.upgrade-card.assassin-upgrade::after { border-color: rgba(224, 166, 255, 0.42); }
 .upgrade-card h3 { margin: 6px 0 10px; font-size: clamp(20px, 2vw, 28px); line-height: 1; letter-spacing: -0.025em; }
 .upgrade-card p { min-height: 47px; margin: 0; color: #8ba0aa; font-family: var(--font-mono); font-size: 10px; line-height: 1.55; }
 .card-footer { position: absolute; right: 22px; bottom: 20px; left: 22px; display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }

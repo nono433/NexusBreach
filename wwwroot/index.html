@@ -7,7 +7,7 @@
   <meta name="description" content="Nexus Breach — un FPS de survie contre des vagues de monstres.">
   <title>Nexus Breach</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=12">
+  <link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
   <div id="game-shell">
@@ -53,7 +53,7 @@
           </div>
           <div id="equipment-list" class="equipment-list" aria-label="Équipement"></div>
           <div id="ability-readout" class="ability-readout">
-            <div><span>CAPACITÉ // CLIC DROIT</span><strong id="ability-name">AUCUNE</strong></div>
+            <div><span>CAPACITÉ // ESPACE</span><strong id="ability-name">AUCUNE</strong></div>
             <small id="ability-status">ÉQUIPE UNE CAPACITÉ DANS L'ATELIER</small>
           </div>
         </section>
@@ -62,7 +62,7 @@
           <span><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> MOUVEMENT</span>
           <span><kbd>MAJ</kbd> SPRINT</span>
           <span><kbd>R</kbd> RECHARGER</span>
-          <span id="right-click-hint"><kbd>CLIC DROIT</kbd> CAPACITÉ</span>
+          <span id="ability-hint"><kbd>ESPACE</kbd> CAPACITÉ</span>
         </div>
 
         <section class="ammo-panel" aria-label="Munitions">
@@ -229,7 +229,7 @@
         <div id="shop-weapons" class="shop-items shop-weapons"></div>
         <div class="shop-section-heading">
           <span>CAPACITÉS ACTIVES</span>
-          <small>ACTIVE AVEC LE CLIC DROIT</small>
+          <small>ACTIVE AVEC ESPACE</small>
         </div>
         <div id="shop-abilities" class="shop-items shop-abilities"></div>
         <div class="shop-section-heading">
@@ -276,6 +276,6 @@
     <div id="sound-button" class="sound-button" title="Activer ou couper le son (M)" aria-label="Couper le son">♪</div>
   </div>
 
-  <script type="module" src="game.js?v=12"></script>
+  <script type="module" src="game.js?v=13"></script>
 </body>
 </html>

@@ -10,8 +10,8 @@ Jeu de tir en vue à la première personne avec vagues de monstres et améliorat
 - Le bouton **ATELIER // ÉQUIPEMENT** du menu, ou **VISITER L'ATELIER** après une mort, permet d’acheter des bonus permanents.
 - Les modules achetés sont automatiquement actifs au début de la prochaine partie. Les améliorations affichées entre les vagues restent temporaires à la partie en cours.
 - L’arsenal contient **AR-9 PULSE**, **SCATTER-7**, **NOVA-12**, **LANCE-01**, **VECTOR-6**, **PYRO-4**, **FROST-3** et **ARC-9 PLASMA**. Chaque fiche indique les dégâts, la cadence, la précision, la portée, le chargeur, la recharge, le bonus headshot et l’effet spécial. L’arme sélectionnée dans l’atelier est utilisée au prochain lancement.
-- Les capacités **NOVA PULSE**, **CRYO FIELD**, **AEGIS SHIELD** et **OVERLOAD CORE** s’achètent dans l’atelier. Une capacité peut être équipée et s’active avec le **clic droit** pendant la partie.
-- La classe **ASSASSIN** se débloque dans l’atelier pour **2 500 crédits**. Elle remplace l’arme à distance par deux sabres visibles, une frappe au clic gauche et un dash d’évasion au clic droit ou avec **Espace**.
+- Les capacités **NOVA PULSE**, **CRYO FIELD**, **AEGIS SHIELD** et **OVERLOAD CORE** s’achètent dans l’atelier. Une capacité peut être équipée et s’active avec la touche **Espace** pendant la partie.
+- La classe **ASSASSIN** se débloque dans l’atelier pour **2 500 crédits**. Elle remplace l’arme à distance par deux sabres visibles, une frappe au clic gauche et un dash d’évasion avec **Espace**.
 - Deux cartes sont disponibles : **NEXUS** et **FOUNDRY**. La carte sélectionnée est sauvegardée dans le navigateur. Nexus conserve ses quatre mobs standards, tandis que Foundry possède quatre machines personnalisées et plus fortes : **Crawleur de Scorie**, **Rôdeur de Braise**, **Colosse de Laitier** et **Forge-Monarque**. Les variantes de Foundry sont plus rapides, infligent davantage de dégâts, frappent plus souvent et rapportent plus de points.
 
 ## Jouer en ligne
@@ -43,8 +43,7 @@ dotnet run --configuration Release -- --no-browser
 - **ZQSD / WASD** — se déplacer
 - **Souris** — viser
 - **Clic gauche** — tirer (frapper aux sabres avec la classe Assassin)
-- **Clic droit** — capacité active / dash Assassin
-- **Espace** — dash Assassin
+- **Espace** — capacité active / dash Assassin
 - **R** — recharger
 - **Maj** — sprinter
 - **Échap** — pause
@@ -52,6 +51,6 @@ dotnet run --configuration Release -- --no-browser
 
 ## Améliorations
 
-Après chaque vague, choisis un module : puissance, cadence, capacité du chargeur, recharge, armure, mobilité, régénération, perforations ou réduction des dégâts.
+Après chaque vague, choisis un module : puissance, cadence, capacité du chargeur, recharge, armure, mobilité, régénération, perforations ou réduction des dégâts. Les modules permanents de l’Atelier deviennent plus chers à chaque niveau. L’Assassin reçoit en plus des améliorations exclusives : **Lames affûtées**, **Tempête jumelle**, **Voile d’ombre**, **Sang d’Ombre** et **Sentence**.
 
 La carte de cette version est légèrement plus lumineuse que celle de l'ancienne version.
