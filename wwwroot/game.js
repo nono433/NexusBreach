@@ -1,5 +1,10 @@
 import * as THREE from './vendor/three.module.min.js';
 
+// Le gardien de demarrage dans index.html attend ces deux signaux. Sans eux,
+// un echec silencieux (module non execute, initialisation bloquee) laisse
+// l'ecran de chargement tourner indefiniment sans aucune explication.
+if (window.__nexus) window.__nexus.moduleTouche = true;
+
 const canvas = document.querySelector('#game-canvas');
 const ui = {
   loading: document.querySelector('#loading-screen'),
@@ -5242,17 +5247,26 @@ function init() {
 
   window.setTimeout(() => ui.loading.classList.add('done'), 480);
   renderer.setAnimationLoop(frame);
+  if (window.__nexus) window.__nexus.pret = true;
 }
 
 try {
   init();
 } catch (error) {
+  // L'ancien message affirmait « WebGL 2 est necessaire » sans le verifier :
+  // il designait une cause au hasard, et pouvait masquer une erreur sans
+  // rapport. On affiche desormais la vraie erreur, via le meme rendu que le
+  // gardien de demarrage.
   console.error(error);
-  ui.loading.innerHTML = `
-    <div style="max-width:520px;padding:28px;text-align:center;border:1px solid #ff3158;color:#ff9bab;font:12px monospace;line-height:1.6">
-      <strong>INITIALISATION IMPOSSIBLE</strong><br><br>
-      WebGL 2 est nécessaire pour lancer Nexus Breach.<br>
-      Vérifiez l'accélération matérielle de votre navigateur, puis rechargez la page.
-    </div>
-  `;
+  const raison = (error && (error.message || String(error))) || 'cause inconnue';
+  if (window.__nexus && typeof window.__nexus.echec === 'function') {
+    window.__nexus.erreurs.push('init() : ' + raison);
+    window.__nexus.echec("L'initialisation du jeu a echoue.");
+  } else if (ui.loading) {
+    ui.loading.innerHTML = `
+      <div style="max-width:520px;padding:28px;text-align:center;border:1px solid #ff3158;color:#ff9bab;font:12px monospace;line-height:1.6">
+        <strong>INITIALISATION IMPOSSIBLE</strong><br><br>${raison}
+      </div>
+    `;
+  }
 }

@@ -306,6 +306,71 @@
     </div>
   </div>
 
-  <script type="module" src="game.js?v=14"></script>
+  <!--
+    Gardien de demarrage. Ce script est classique (pas module) et place AVANT
+    le module du jeu : il s'execute donc meme si game.js echoue entirely.
+    Sans lui, un module qui ne se charge pas laisse l'ecran de chargement
+    tourner indefiniment, sans dire pourquoi.
+  -->
+  <script>
+  (function () {
+    var etat = { moduleTouche: false, pret: false, erreurs: [], echec: null };
+    window.__nexus = etat;
+
+    function webgl2() {
+      try {
+        var c = document.createElement('canvas');
+        return Boolean(c.getContext('webgl2'));
+      } catch (e) { return false; }
+    }
+
+    function echec(titre, detail) {
+      var ecran = document.getElementById('loading-screen');
+      if (!ecran || !document.body.contains(ecran)) return;
+      if (ecran.classList.contains('done')) return;
+      var liste = '';
+      for (var i = 0; i < etat.erreurs.length; i++) {
+        liste += '<div style="margin-top:10px;padding:9px;border-left:2px solid #ff3158;background:rgba(255,49,88,.08);color:#ff9bab;font:10px/1.5 monospace;word-break:break-word;text-align:left">' + etat.erreurs[i] + '</div>';
+      }
+      ecran.innerHTML = '<div style="max-width:560px;padding:26px;text-align:center;border:1px solid #ff3158;background:rgba(8,15,22,.96);font:12px/1.7 monospace;color:#ff9bab">'
+        + '<strong style="font-size:15px;letter-spacing:.06em">DEMARRAGE IMPOSSIBLE</strong>'
+        + '<div style="margin-top:14px;color:#dffcff">' + titre + '</div>'
+        + '<div style="margin-top:12px;color:#7c919e;font-size:10px;text-align:left">'
+        + 'module game.js execute : ' + (etat.moduleTouche ? 'oui' : 'NON') + '<br>'
+        + 'initialisation terminee : ' + (etat.pret ? 'oui' : 'non') + '<br>'
+        + 'WebGL 2 disponible : ' + (webgl2() ? 'oui' : 'NON') + '<br>'
+        + 'navigateur : ' + navigator.userAgent.slice(0, 90)
+        + '</div>' + liste + '</div>';
+    }
+
+    // Le module appelle ce rendu pour afficher une erreur qu'il a lui-meme
+    // constatee : un seul point de verite pour l'ecran de diagnostic.
+    etat.echec = echec;
+
+    window.addEventListener('error', function (e) {
+      // Ignore les erreurs de chargement de ressources sans message.
+      etat.erreurs.push((e.message || 'erreur') + ' <' + ((e.filename || '').split('/').pop() || '?') + ':' + (e.lineno || '?') + '>');
+      echec('Le jeu a produit une erreur pendant son chargement.', null);
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      etat.erreurs.push('promesse rejetee : ' + ((r && (r.message || r.stack)) ? (r.message || r.stack) : String(r)));
+      echec('Le jeu a produit une erreur pendant son chargement.', null);
+    });
+
+    // Le module peut echouer a se charger ou a s'executer : dans ce cas rien
+    // ne signale l'etat, et l'ecran reste bloque. On le verifie nous-memes.
+    setTimeout(function () {
+      if (etat.pret) return;
+      if (!etat.moduleTouche) {
+        echec("Le fichier game.js n'a pas pu etre execute. Vide le cache du navigateur (Ctrl+Maj+R) puis recharge la page.", null);
+      } else {
+        echec("L'initialisation du jeu n'a pas abouti.", null);
+      }
+    }, 9000);
+  })();
+  </script>
+
+  <script type="module" src="game.js?v=15"></script>
 </body>
 </html>
