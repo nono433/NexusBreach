@@ -45,16 +45,22 @@ async function api(method, url, body) {
   return data;
 }
 
-// Fichiers ignores : sauvegardes locales, artefacts de test, apercus.
-const IGNORED_DIRS = new Set(['_originaux', '_edgeprofile', 'node_modules', '.git']);
-const IGNORED_FILES = /^(__smoke\.html|__preview-.*\.html)$/;
+// Fichiers ignores : sauvegardes locales, profils de navigateur Edge
+// (ils sont nommes _edgeprofile, _edgeprofile-assassin, ...), artefacts.
+const IGNORED_DIRS = new Set(['_originaux', 'node_modules', '.git']);
+const IGNORED_DIR_PREFIXES = ['_edgeprofile'];
+const IGNORED_FILES = /^(__smoke\.html|__preview-.*\.html|__shopshot\.html|capture-.*\.png)$/;
+
+function ignoreDirectory(name) {
+  return IGNORED_DIRS.has(name) || IGNORED_DIR_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
 
 function collect(dir, base, out) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const absolute = path.join(dir, entry.name);
     const relative = path.relative(base, absolute).split(path.sep).join('/');
     if (entry.isDirectory()) {
-      if (IGNORED_DIRS.has(entry.name)) continue;
+      if (ignoreDirectory(entry.name)) continue;
       collect(absolute, base, out);
     } else if (entry.isFile()) {
       if (IGNORED_FILES.test(entry.name)) continue;

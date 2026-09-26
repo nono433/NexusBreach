@@ -80,8 +80,8 @@ const CONFIG = {
   interactionRange: 70
 };
 
-// Un profil automatique Ã©vite de rendre le jeu inutilisable sur les GPU intÃ©grÃ©s.
-// Le rendu reste net, mais avec une rÃ©solution et des ombres mieux adaptÃ© au matÃ©riel.
+// Un profil automatique évite de rendre le jeu inutilisable sur les GPU intégrés.
+// Le rendu reste net, mais avec une résolution et des ombres mieux adapté au matériel.
 const PERFORMANCE_PROFILE = (() => {
   const cores = Number(navigator.hardwareConcurrency) || 8;
   const memory = Number(navigator.deviceMemory) || 8;
@@ -145,7 +145,7 @@ const MAP_DEFINITIONS = [
     id: 'foundry',
     name: 'SECTEUR 12 // FOUNDRY',
     short: 'FOUNDRY',
-    description: 'Zone de forge hostile : quatre machines dâ€™Ã©lite, plus rÃ©sistantes et plus mortelles.',
+    description: 'Zone de forge hostile : quatre machines d’élite, plus résistantes et plus mortelles.',
     background: 0x24121e,
     fogColor: 0x24121e,
     fogDensity: 0.024,
@@ -218,8 +218,8 @@ const PLAYER_CLASSES = Object.freeze({
     id: 'ranger',
     name: 'Ranger',
     short: 'RANGER',
-    tagline: 'TIR Ã€ DISTANCE Â· CONTRÃ”LE DE ZONE',
-    description: 'SpÃ©cialiste du tir Ã  distance. Plus de vie, une arme Ã  distance, et des capacitÃ©s qui couvrent le sol.',
+    tagline: 'TIR À DISTANCE · CONTRÔLE DE ZONE',
+    description: 'Plus de vie et un arsenal complet. Ses capacités couvrent le terrain.',
     price: 0,
     color: '#00f5ff',
     stats: {
@@ -236,14 +236,14 @@ const PLAYER_CLASSES = Object.freeze({
     id: 'assassin',
     name: 'Assassin',
     short: 'ASSASSIN',
-    tagline: 'MÃ‰LÃ‰E Â· MOBILITÃ‰ Â· EXÃ‰CUTION',
-    description: 'Corps Ã  corps. Moins de vie, mais plus rapide, un dash dâ€™Ã©vasion, et des frappes qui tuent plus vite.',
+    tagline: 'MÉLÉE · MOBILITÉ · EXÉCUTION',
+    description: 'Sabres et dash. Moins de vie, mais plus rapide, et des frappes qui tuent plus vite.',
     price: 2500,
     color: '#b17cff',
     stats: {
       health: 84,
       speed: 7.3,
-      // DÃ©gÃ¢ts par frappe et cadence de base, avant amÃ©liorations.
+      // Dégâts par frappe et cadence de base, avant améliorations.
       slashDamage: 46,
       slashRate: 2.7,
       slashRange: 3.9,
@@ -264,7 +264,7 @@ const GAME_STATE = Object.freeze({
 
 const ENEMY_TYPES = {
   crawler: {
-    name: 'RÃ´deur',
+    name: 'Rôdeur',
     hp: 48,
     speed: 2.35,
     damage: 9,
@@ -328,7 +328,7 @@ const FOUNDRY_ENEMY_TYPES = {
     spikeCount: 5
   },
   emberStalker: {
-    name: 'RÃ´deur de Braise',
+    name: 'Rôdeur de Braise',
     hp: 48,
     speed: 4.05,
     damage: 9,
@@ -391,7 +391,7 @@ const UPGRADE_DEFINITIONS = {
   armor: {
     classId: 'shared',
     name: 'Exosquelette',
-    description: '+28 PV maximum et soin immÃ©diat.',
+    description: '+28 PV maximum et soin immédiat.',
     short: 'ARMURE',
     color: '#5ca8ff',
     max: 7,
@@ -400,8 +400,8 @@ const UPGRADE_DEFINITIONS = {
   speed: {
     classId: 'shared',
     name: 'Propulseurs',
-    description: '+6 % de vitesse de dÃ©placement.',
-    short: 'MOBILITÃ‰',
+    description: '+6 % de vitesse de déplacement.',
+    short: 'MOBILITÉ',
     color: '#22e6a8',
     max: 5,
     icon: '<path d="M31 6 18 34h12l-4 25 19-35H33l5-18Z"/><path d="M9 14h12M7 24h10M9 34h12M47 49h9"/>'
@@ -409,8 +409,8 @@ const UPGRADE_DEFINITIONS = {
   stabilize: {
     classId: 'shared',
     name: 'Stabilisateurs',
-    description: 'RÃ©duisez les dÃ©gÃ¢ts subis de 15 % (plafond 68 %).',
-    short: 'STABILITÃ‰',
+    description: 'Réduisez les dégâts subis de 15 % (plafond 68 %).',
+    short: 'STABILITÉ',
     color: '#72d8ff',
     max: 4,
     icon: '<path d="M32 6v52M8 18l48 28M56 18 8 46M8 32h48"/><circle cx="32" cy="32" r="24"/><circle cx="32" cy="32" r="10"/>'
@@ -419,8 +419,8 @@ const UPGRADE_DEFINITIONS = {
   // --- Ranger --------------------------------------------------------------
   damage: {
     classId: 'ranger',
-    name: 'Canon amplifiÃ©',
-    description: '+13 % de dÃ©gÃ¢ts de base par niveau.',
+    name: 'Canon amplifié',
+    description: '+13 % de dégâts de base par niveau.',
     short: 'PUISSANCE',
     color: '#ff6b2c',
     max: 6,
@@ -428,7 +428,7 @@ const UPGRADE_DEFINITIONS = {
   },
   fireRate: {
     classId: 'ranger',
-    name: 'GÃ¢che rapide',
+    name: 'Gâche rapide',
     description: '+11 % de cadence de base par niveau.',
     short: 'CADENCE',
     color: '#00f5ff',
@@ -437,16 +437,16 @@ const UPGRADE_DEFINITIONS = {
   },
   magazine: {
     classId: 'ranger',
-    name: 'Chargeur Ã©tendu',
+    name: 'Chargeur étendu',
     description: '+8 munitions par niveau.',
-    short: 'CAPACITÃ‰',
+    short: 'CAPACITÉ',
     color: '#62ff9a',
     max: 6,
     icon: '<path d="M12 15h40v34H12zM20 22h24v20H20zM24 8h16v7M32 27v10m-5-5h10"/>'
   },
   reload: {
     classId: 'ranger',
-    name: 'Recharge accÃ©lÃ©rÃ©e',
+    name: 'Recharge accélérée',
     description: '-11 % de temps de recharge par niveau.',
     short: 'RECHARGE',
     color: '#9b78ff',
@@ -456,7 +456,7 @@ const UPGRADE_DEFINITIONS = {
   pierce: {
     classId: 'ranger',
     name: 'Rayons perforants',
-    description: 'Touchez un hostile supplÃ©mentaire par niveau.',
+    description: 'Touchez un hostile supplémentaire par niveau.',
     short: 'PERFORATION',
     color: '#f6e45c',
     max: 3,
@@ -464,18 +464,18 @@ const UPGRADE_DEFINITIONS = {
   },
   repair: {
     classId: 'ranger',
-    name: 'Nanites rÃ©parateurs',
-    description: 'RÃ©cupÃ©rez +1,2 PV par seconde et par niveau.',
-    short: 'RÃ‰GÃ‰NÃ‰RATION',
+    name: 'Nanites réparateurs',
+    description: 'Récupérez +1,2 PV par seconde et par niveau.',
+    short: 'RÉGÉNÉRATION',
     color: '#ff77c8',
     max: 6,
     icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M20 28h8l3-6 4 13 3-7h8"/>'
   },
   focus: {
     classId: 'ranger',
-    name: 'Optique de prÃ©cision',
-    description: '+0,35x sur les dÃ©gÃ¢ts de tÃªte par niveau.',
-    short: 'PRÃ‰CISION',
+    name: 'Optique de précision',
+    description: '+0,35x sur les dégâts de tête par niveau.',
+    short: 'PRÉCISION',
     color: '#ffd166',
     max: 4,
     icon: '<circle cx="32" cy="32" r="18"/><circle cx="32" cy="32" r="9"/><path d="M32 4v9M32 51v9M4 32h9M51 32h9M12 12l7 7M45 45l7 7M52 12l-7 7M19 45l-7 7"/>'
@@ -484,8 +484,8 @@ const UPGRADE_DEFINITIONS = {
   // --- Assassin ------------------------------------------------------------
   shadowDamage: {
     classId: 'assassin',
-    name: 'Lames affÃ»tÃ©es',
-    description: '+13 % de dÃ©gÃ¢ts de frappe par niveau.',
+    name: 'Lames affûtées',
+    description: '+13 % de dégâts de frappe par niveau.',
     short: 'LAMES',
     color: '#b17cff',
     max: 6,
@@ -493,7 +493,7 @@ const UPGRADE_DEFINITIONS = {
   },
   shadowFlurry: {
     classId: 'assassin',
-    name: 'TempÃªte jumelle',
+    name: 'Tempête jumelle',
     description: '+11 % de cadence de frappe par niveau.',
     short: 'FRAPPE',
     color: '#e0a6ff',
@@ -502,8 +502,8 @@ const UPGRADE_DEFINITIONS = {
   },
   shadowVeil: {
     classId: 'assassin',
-    name: 'Voile dâ€™ombre',
-    description: '-9 % de recharge du dash et +0,05 s dâ€™invulnÃ©rabilitÃ© par niveau.',
+    name: 'Voile d’ombre',
+    description: '-9 % de recharge du dash et +0,05 s d’invulnérabilité par niveau.',
     short: 'DASH',
     color: '#7c6bff',
     max: 4,
@@ -511,8 +511,8 @@ const UPGRADE_DEFINITIONS = {
   },
   shadowBlood: {
     classId: 'assassin',
-    name: 'Sang dâ€™Ombre',
-    description: 'RÃ©cupÃ©rez 5 PV par Ã©limination et par niveau.',
+    name: 'Sang d’Ombre',
+    description: 'Récupérez 5 PV par élimination et par niveau.',
     short: 'SANG',
     color: '#ff4d83',
     max: 4,
@@ -521,8 +521,8 @@ const UPGRADE_DEFINITIONS = {
   shadowExecution: {
     classId: 'assassin',
     name: 'Sentence',
-    description: '+35 % de dÃ©gÃ¢ts contre les hostiles sous 30 % PV, par niveau.',
-    short: 'EXÃ‰CUTION',
+    description: '+35 % de dégâts contre les hostiles sous 30 % PV, par niveau.',
+    short: 'EXÉCUTION',
     color: '#ff3158',
     max: 4,
     icon: '<circle cx="32" cy="32" r="22"/><circle cx="32" cy="32" r="11"/><path d="M32 4v12M32 48v12M4 32h12M48 32h12M12 12l9 9M43 43l9 9M52 12l-9 9M21 43l-9 9"/><path d="m27 32 4 4 8-9"/>'
@@ -530,7 +530,7 @@ const UPGRADE_DEFINITIONS = {
   shadowReach: {
     classId: 'assassin',
     name: 'Allonge',
-    description: '+0,35 m de portÃ©e et +0,06 dâ€™arc de frappe par niveau.',
+    description: '+0,35 m de portée et +0,06 d’arc de frappe par niveau.',
     short: 'ALLONGE',
     color: '#9f7bff',
     max: 4,
@@ -538,8 +538,8 @@ const UPGRADE_DEFINITIONS = {
   },
   shadowPoise: {
     classId: 'assassin',
-    name: 'Garde dâ€™ombre',
-    description: '+18 PV maximum et +0,5 PV rÃ©gÃ©nÃ©rÃ©s par seconde, par niveau.',
+    name: 'Garde d’ombre',
+    description: '+18 PV maximum et +0,5 PV régénérés par seconde, par niveau.',
     short: 'GARDE',
     color: '#8affd6',
     max: 4,
@@ -566,7 +566,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'ray',
     name: 'AR-9 // PULSE',
     short: 'PULSE',
-    description: 'Fiable et sans dÃ©faut. Le point de dÃ©part de tout opÃ©rateur.',
+    description: 'Fiable et sans défaut. Le point de départ de tout opérateur.',
     price: 0,
     damage: 28,
     fireRate: 5.4,
@@ -577,7 +577,7 @@ const WEAPON_DEFINITIONS = {
     pierce: 0,
     range: 70,
     headshotMultiplier: 1.7,
-    special: 'Ã‰QUILIBRÃ‰',
+    special: 'ÉQUILIBRÉ',
     color: '#00f5ff',
     energyColor: 0x00f5ff,
     accentColor: 0xff4d22,
@@ -591,7 +591,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'ray',
     name: 'SCATTER-7 // BREACH',
     short: 'SCATTER',
-    description: 'Sept projectiles dispersÃ©s. Sans effet sur un Alpha, redoutable sur un groupe.',
+    description: 'Sept projectiles dispersés. Sans effet sur un Alpha, redoutable sur un groupe.',
     price: 450,
     damage: 19,
     fireRate: 1.7,
@@ -616,7 +616,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'ray',
     name: 'NOVA-12 // SWARM',
     short: 'NOVA',
-    description: 'Cadence Ã©levÃ©e et gros chargeur. Tient la pression quand Ã§a arrive de tous les cÃ´tÃ©s.',
+    description: 'Cadence élevée et gros chargeur. Tient la pression quand ça arrive de tous les côtés.',
     price: 650,
     damage: 16,
     fireRate: 13,
@@ -641,7 +641,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'ray',
     name: 'VECTOR-6 // HEADHUNTER',
     short: 'VECTOR',
-    description: 'Revolver de prÃ©cision. Faible cadence, mais Ã—2,6 sur la tÃªte : la rÃ©ponse aux Ã©lites.',
+    description: 'Revolver de précision. Faible cadence, mais ×2,6 sur la tête : la réponse aux élites.',
     price: 800,
     damage: 98,
     fireRate: 1.85,
@@ -666,7 +666,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'ray',
     name: 'FROST-3 // CRYO',
     short: 'CRYO',
-    description: 'Le froid ralentit de 55 %. Faible dÃ©gÃ¢ts, mais il achÃ¨te du temps.',
+    description: 'Le froid ralentit de 55 %. Faible dégâts, mais il achète du temps.',
     price: 900,
     damage: 25,
     fireRate: 4.3,
@@ -693,7 +693,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'ray',
     name: 'LANCE-01 // RAIL',
     short: 'RAIL',
-    description: 'Transperce trois hostiles alignÃ©s. La rÃ©ponse aux vagues dâ€™Ã©lites.',
+    description: 'Transperce trois hostiles alignés. La réponse aux vagues d’élites.',
     price: 950,
     damage: 132,
     fireRate: 1,
@@ -718,7 +718,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'ray',
     name: 'PYRO-4 // INFERNO',
     short: 'INFERNO',
-    description: 'FlammÃ¨che de contact. PortÃ©e courte, mais tout ce quâ€™elle touche brÃ»le.',
+    description: 'Flammèche de contact. Portée courte, mais tout ce qu’elle touche brûle.',
     price: 1100,
     damage: 6,
     fireRate: 18,
@@ -731,7 +731,7 @@ const WEAPON_DEFINITIONS = {
     headshotMultiplier: 1.3,
     burnDamage: 6,
     burnDuration: 2.5,
-    special: 'BRÃ›LURE',
+    special: 'BRÛLURE',
     color: '#ff6b2c',
     energyColor: 0xff6b2c,
     accentColor: 0xffd166,
@@ -745,7 +745,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'ray',
     name: 'ARC-9 // PLASMA',
     short: 'PLASMA',
-    description: 'Boules Ã  fusion. Lâ€™explosion touche tout ce qui est autour du point dâ€™impact.',
+    description: 'Boules à fusion. L’explosion touche tout ce qui est autour du point d’impact.',
     price: 1400,
     damage: 92,
     fireRate: 2.3,
@@ -774,7 +774,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'slash',
     name: 'LAMES // JUMELLES',
     short: 'JUMELLES',
-    description: 'Deux sabres, deux cibles. Lâ€™arme de base de lâ€™Assassin.',
+    description: 'Deux sabres, deux cibles. L’arme de base de l’Assassin.',
     price: 0,
     damage: 48,
     fireRate: 2.7,
@@ -797,7 +797,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'slash',
     name: 'LAME // SPATULE',
     short: 'SPATULE',
-    description: 'Une seule cible, mais un coup qui arrache. Arc large pour les groups serrÃ©s.',
+    description: 'Une seule cible, mais un coup qui arrache. Arc large pour les groups serrés.',
     price: 700,
     damage: 108,
     fireRate: 1.85,
@@ -820,7 +820,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'slash',
     name: 'CROCS // JUMELS',
     short: 'CROCS',
-    description: 'Trois cibles, enchaÃ®nement rapide. Faible par coup, imbattable dans la masse.',
+    description: 'Trois cibles, enchaînement rapide. Faible par coup, imbattable dans la masse.',
     price: 850,
     damage: 35,
     fireRate: 3.5,
@@ -843,7 +843,7 @@ const WEAPON_DEFINITIONS = {
     fireMode: 'ray',
     name: 'SHURIKEN // VOLANT',
     short: 'SHURIKEN',
-    description: 'Lancer Ã  la main. PortÃ©e courte, mais on garde la mobilitÃ© du dash.',
+    description: 'Lancer à la main. Portée courte, mais on garde la mobilité du dash.',
     price: 1100,
     damage: 29,
     fireRate: 9,
@@ -866,9 +866,9 @@ const WEAPON_DEFINITIONS = {
     id: 'shadowStep',
     classId: 'assassin',
     fireMode: 'slash',
-    name: 'PAS // Dâ€™OMBRE',
+    name: 'PAS // D’OMBRE',
     short: 'PAS OMBRE',
-    description: 'Frappe qui voyage avec le dash : chaque esquive traverse ce qui traÃ®ne derriÃ¨re.',
+    description: 'Frappe qui voyage avec le dash : chaque esquive traverse ce qui traîne derrière.',
     price: 1500,
     damage: 76,
     fireRate: 2.4,
@@ -902,13 +902,13 @@ const ABILITY_DEFINITIONS = {
     classId: 'ranger',
     name: 'NOVA PULSE',
     short: 'NOVA',
-    description: 'DÃ©tonation de zone. Touche tout le monde autour de toi, allies compris le dash de lâ€™Assassin.',
+    description: 'Détonation de zone. Touche tout le monde autour de toi, allies compris le dash de l’Assassin.',
     price: 500,
     cooldown: 11,
     duration: 0,
     radius: 11,
     damage: 150,
-    effect: 'DÃ‰GÃ‚TS DE ZONE',
+    effect: 'DÉGÂTS DE ZONE',
     color: '#ffcf4a',
     icon: '<circle cx="32" cy="32" r="9"/><circle cx="32" cy="32" r="23"/><path d="M32 4v12M32 48v12M4 32h12M48 32h12M12 12l9 9M43 43l9 9M52 12l-9 9M21 43l-9 9"/>'
   },
@@ -917,7 +917,7 @@ const ABILITY_DEFINITIONS = {
     classId: 'ranger',
     name: 'CRYO FIELD',
     short: 'CRYO',
-    description: 'GÃ¨le la zone : les ennemis qui sâ€™y trouvent sont ralentis de 70 % pendant 4 secondes.',
+    description: 'Gèle la zone : les ennemis qui s’y trouvent sont ralentis de 70 % pendant 4 secondes.',
     price: 650,
     cooldown: 16,
     duration: 4,
@@ -933,7 +933,7 @@ const ABILITY_DEFINITIONS = {
     classId: 'ranger',
     name: 'AEGIS SHIELD',
     short: 'AEGIS',
-    description: 'Bouclier dâ€™Ã©nergie : -45 % de dÃ©gÃ¢ts subis pendant 5 secondes.',
+    description: 'Bouclier d’énergie : -45 % de dégâts subis pendant 5 secondes.',
     price: 800,
     cooldown: 18,
     duration: 5,
@@ -949,7 +949,7 @@ const ABILITY_DEFINITIONS = {
     classId: 'ranger',
     name: 'OVERLOAD CORE',
     short: 'OVERDRIVE',
-    description: 'Surcharge lâ€™arme : +50 % de dÃ©gÃ¢ts et +60 % de cadence pendant 7 secondes.',
+    description: 'Surcharge l’arme : +50 % de dégâts et +60 % de cadence pendant 7 secondes.',
     price: 1000,
     cooldown: 24,
     duration: 7,
@@ -966,7 +966,7 @@ const ABILITY_DEFINITIONS = {
     classId: 'assassin',
     name: 'PAS OMBRE',
     short: 'PAS OMBRE',
-    description: 'Reset immÃ©diat du dash et +50 % de dÃ©gÃ¢ts de frappe pendant 6 secondes.',
+    description: 'Reset immédiat du dash et +50 % de dégâts de frappe pendant 6 secondes.',
     price: 500,
     cooldown: 12,
     duration: 6,
@@ -981,22 +981,22 @@ const ABILITY_DEFINITIONS = {
     classId: 'assassin',
     name: 'VOILE SOMBRE',
     short: 'VOILE',
-    description: 'Invisible 1,5 s. La premiÃ¨re frappe qui suit est un headshot garanti, quelle que soit la distance.',
+    description: 'Invisible 1,5 s. La première frappe qui suit est un headshot garanti, quelle que soit la distance.',
     price: 750,
     cooldown: 16,
     duration: 1.5,
     vanish: true,
     guaranteedCrit: true,
-    effect: 'INVISIBILITÃ‰',
+    effect: 'INVISIBILITÉ',
     color: '#b17cff',
     icon: '<path d="M32 6c9 0 15 7 15 16 0 10-7 20-15 30-8-10-15-20-15-30 0-9 6-16 15-16Z"/><path d="M6 20l8 4M58 20l-8 4M6 44l8-4M58 44l-8-4"/>'
   },
   shadowRiptide: {
     id: 'shadowRiptide',
     classId: 'assassin',
-    name: 'SANG-DÃ‰CHIRÃ‰',
+    name: 'SANG-DÉCHIRÉ',
     short: 'SANG',
-    description: 'Vampirie : +45 % de dÃ©gÃ¢ts et 6 PV rÃ©cupÃ©rÃ©s par Ã©limination, pendant 8 secondes.',
+    description: 'Vampirie : +45 % de dégâts et 6 PV récupérés par élimination, pendant 8 secondes.',
     price: 900,
     cooldown: 20,
     duration: 8,
@@ -1011,32 +1011,32 @@ const ABILITY_DEFINITIONS = {
     classId: 'assassin',
     name: 'HEURE DE CENDRE',
     short: 'CENDRES',
-    description: 'Ralentit de 55 % tous les ennemis pendant 6 s et inflige 90 dÃ©gÃ¢ts Ã  l healthiest de la zone.',
+    description: 'Ralentit de 55 % tous les ennemis pendant 6 s et inflige 90 dégâts à l healthiest de la zone.',
     price: 1200,
     cooldown: 26,
     duration: 6,
     radius: 18,
     slowMultiplier: 0.45,
     damage: 90,
-    effect: 'RALENTI + DÃ‰GÃ‚TS',
+    effect: 'RALENTI + DÉGÂTS',
     color: '#c9a6ff',
     icon: '<path d="M16 6h32M16 58h32M18 6c0 14 14 16 14 26S18 44 18 58M46 6c0 14-14 16-14 26s14 12 14 26"/><path d="M22 50h20"/>'
   }
 };
 
-// Ã‰quipements permanents achetÃ©s avec les crÃ©dits gagnÃ©s Ã  la mort.
+// Équipements permanents achetés avec les crédits gagnés à la mort.
 //
-// Volontairement sobres. Les crÃ©dits sont gagnÃ©s Ã  chaque mort, donc un
+// Volontairement sobres. Les crédits sont gagnés à chaque mort, donc un
 // joueur qui meurt beaucoup les empile : des bonus trop forts rendent le jeu
-// trivial aprÃ¨s quelques parties. Le plafond total de l'atelier est de
-// +40 % de dÃ©gÃ¢ts, +35 % de cadence, +90 PV et 16 % de rÃ©duction, ce qui
-// reste en dessous des amÃ©liorations de vague (jusqu'Ã  +78 % de dÃ©gÃ¢ts).
-// Le champ classId rend chaque Ã©quipement exclusif Ã  une classe.
+// trivial après quelques parties. Le plafond total de l'atelier est de
+// +40 % de dégâts, +35 % de cadence, +90 PV et 16 % de réduction, ce qui
+// reste en dessous des améliorations de vague (jusqu'à +78 % de dégâts).
+// Le champ classId rend chaque équipement exclusif à une classe.
 const META_EQUIPMENT = [
   {
     id: 'reinforcedCore',
     classId: 'shared',
-    name: 'Noyau blindÃ©',
+    name: 'Noyau blindé',
     short: 'BLINDAGE',
     description: '+18 PV maximum par niveau.',
     color: '#5ca8ff',
@@ -1048,9 +1048,9 @@ const META_EQUIPMENT = [
   {
     id: 'neuralShield',
     classId: 'shared',
-    name: 'RÃ©seau neural',
-    short: 'STABILITÃ‰',
-    description: '-4 % de dÃ©gÃ¢ts subis par niveau.',
+    name: 'Réseau neural',
+    short: 'STABILITÉ',
+    description: '-4 % de dégâts subis par niveau.',
     color: '#72d8ff',
     maxLevel: 4,
     baseCost: 320,
@@ -1062,7 +1062,7 @@ const META_EQUIPMENT = [
     classId: 'ranger',
     name: 'Bobine pulsante',
     short: 'DOMMAGE',
-    description: '+8 % de dÃ©gÃ¢ts par niveau.',
+    description: '+8 % de dégâts par niveau.',
     color: '#ff6b2c',
     maxLevel: 5,
     baseCost: 280,
@@ -1072,7 +1072,7 @@ const META_EQUIPMENT = [
   {
     id: 'overclock',
     classId: 'ranger',
-    name: 'DÃ©clencheur surcadencÃ©',
+    name: 'Déclencheur surcadencé',
     short: 'CADENCE',
     description: '+7 % de cadence par niveau.',
     color: '#00f5ff',
@@ -1098,7 +1098,7 @@ const META_EQUIPMENT = [
     classId: 'assassin',
     name: 'Fil des lames',
     short: 'TRANCHE',
-    description: '+9 % de dÃ©gÃ¢ts de frappe par niveau.',
+    description: '+9 % de dégâts de frappe par niveau.',
     color: '#b17cff',
     maxLevel: 5,
     baseCost: 280,
@@ -1108,7 +1108,7 @@ const META_EQUIPMENT = [
   {
     id: 'tendonSurge',
     classId: 'assassin',
-    name: 'Tendon synthÃ©tiques',
+    name: 'Tendon synthétiques',
     short: 'REFLEXE',
     description: '+8 % de cadence de frappe par niveau.',
     color: '#8affd6',
@@ -1121,8 +1121,8 @@ const META_EQUIPMENT = [
     id: 'bloodPact',
     classId: 'assassin',
     name: 'Pacte de sang',
-    short: 'SAIGNÃ‰E',
-    description: '+2 PV rÃ©cupÃ©rÃ©s par Ã©limination, par niveau.',
+    short: 'SAIGNÉE',
+    description: '+2 PV récupérés par élimination, par niveau.',
     color: '#ff4d83',
     maxLevel: 4,
     baseCost: 300,
@@ -1441,7 +1441,7 @@ function writeStorage(key, value) {
   try {
     window.localStorage.setItem(key, value);
   } catch {
-    // La progression reste disponible en mÃ©moire si le stockage est bloquÃ©.
+    // La progression reste disponible en mémoire si le stockage est bloqué.
   }
 }
 
@@ -1471,7 +1471,7 @@ function readOwnedEquipment() {
       }
     });
   } catch {
-    // Un profil corrompu ne doit pas empÃªcher de jouer.
+    // Un profil corrompu ne doit pas empêcher de jouer.
   }
   return equipment;
 }
@@ -1530,7 +1530,7 @@ function readOwnedAbilities() {
       if (saved?.[id] === true) owned[id] = true;
     });
   } catch {
-    // Une sauvegarde invalide laisse simplement le joueur sans capacitÃ©.
+    // Une sauvegarde invalide laisse simplement le joueur sans capacité.
   }
   return owned;
 }
@@ -1577,7 +1577,7 @@ function createProfileBackup() {
 
 function sanitizeImportedProfile(data) {
   if (!data || data.game !== 'Nexus Breach' || data.saveVersion !== 1 || !data.progression) {
-    throw new Error('Ce fichier nâ€™est pas une sauvegarde valide de Nexus Breach.');
+    throw new Error('Ce fichier n’est pas une sauvegarde valide de Nexus Breach.');
   }
 
   const progression = data.progression;
@@ -1667,7 +1667,7 @@ function downloadProfileBackup() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  showSaveStatus('SAUVEGARDE TÃ‰LÃ‰CHARGÃ‰E', 'success');
+  showSaveStatus('SAUVEGARDE TÉLÉCHARGÉE', 'success');
 }
 
 async function importProfileBackup(file) {
@@ -1677,7 +1677,7 @@ async function importProfileBackup(file) {
     const data = JSON.parse(await file.text());
     const profile = sanitizeImportedProfile(data);
     applyProfileBackup(profile);
-    writeStorage(STORAGE_KEYS.restoreNotice, 'SAUVEGARDE RESTAURÃ‰E');
+    writeStorage(STORAGE_KEYS.restoreNotice, 'SAUVEGARDE RESTAURÉE');
     window.location.reload();
   } catch (error) {
     showSaveStatus(error instanceof Error ? error.message.toUpperCase() : 'SAUVEGARDE INVALIDE', 'error');
@@ -1705,13 +1705,13 @@ function updateClassUI() {
     button.classList.toggle('locked', !unlocked);
     button.setAttribute('aria-disabled', String(!unlocked));
     if (id === 'assassin' && ui.assassinClassStatus) {
-      ui.assassinClassStatus.textContent = unlocked ? (equippedClass === id ? 'Ã‰QUIPÃ‰E' : 'POSSÃ‰DÃ‰E') : `${formatCredits(PLAYER_CLASSES.assassin.price)} CR`;
+      ui.assassinClassStatus.textContent = unlocked ? (equippedClass === id ? 'ÉQUIPÉE' : 'POSSÉDÉE') : `${formatCredits(PLAYER_CLASSES.assassin.price)} CR`;
     }
   });
   if (ui.abilityHint) {
     // L'Assassin n'a un dash nu que tant qu'il n'a achete aucune capacite.
     const label = equippedAbility && ABILITY_DEFINITIONS[equippedAbility]?.classId === equippedClass
-      ? 'CAPACITÃ‰'
+      ? 'CAPACITÉ'
       : 'DASH';
     ui.abilityHint.innerHTML = `<kbd>ESPACE</kbd> ${label}`;
   }
@@ -1735,7 +1735,7 @@ function selectPlayerClass(id) {
   }
   if (!ownsClass(id)) {
     openShop();
-    showSaveStatus('DÃ‰BLOQUEZ Lâ€™ASSASSIN POUR 2 500 CR DANS Lâ€™ATELIER', 'error');
+    showSaveStatus('DÉBLOQUEZ L’ASSASSIN POUR 2 500 CR DANS L’ATELIER', 'error');
     return;
   }
   equippedClass = id;
@@ -1831,9 +1831,9 @@ function getPermanentStats() {
     }
   });
 
-  // Le plafond rÃ©el est posÃ© par applyUpgradeStats (68 %), pas ici : un
-  // plafond de 60 % ici Ã©tait du code inatteignable, puisque les rÃ©ductions
-  // permanentes ne dÃ©passent jamais 16 %.
+  // Le plafond réel est posé par applyUpgradeStats (68 %), pas ici : un
+  // plafond de 60 % ici était du code inatteignable, puisque les réductions
+  // permanentes ne dépassent jamais 16 %.
   stats.damageReduction = Math.min(0.16, stats.damageReduction);
   return stats;
 }
@@ -1866,16 +1866,17 @@ function renderShop() {
     card.className = `shop-item class-item${selected ? ' weapon-selected' : ''}`;
     card.style.setProperty('--shop-color', classDefinition.color);
     card.disabled = selected || (!owned && !canBuy);
-    card.setAttribute('aria-label', `${classDefinition.name}, ${owned ? 'possÃ©dÃ©e' : `non possÃ©dÃ©e, ${formatCredits(classDefinition.price)} crÃ©dits`}`);
+    card.setAttribute('aria-label', `${classDefinition.name}, ${owned ? 'possédée' : `non possédée, ${formatCredits(classDefinition.price)} crédits`}`);
     const action = selected
-      ? '<span class="shop-maxed">Ã‰QUIPÃ‰E</span>'
+      ? '<span class="shop-maxed">ÉQUIPÉE</span>'
       : owned
-        ? '<span class="shop-cost">Ã‰QUIPER</span><small>ACTIVER</small>'
+        ? '<span class="shop-cost">ÉQUIPER</span><small>ACTIVER</small>'
         : `<span class="shop-cost">${formatCredits(classDefinition.price)} CR</span><small>ACHETER</small>`;
     card.innerHTML = `
-      <span class="shop-item-top"><span>${classDefinition.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÃ‰DÃ‰E' : 'VERROUILLÃ‰E'}</span></span>
+      <span class="shop-item-top"><span>${classDefinition.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÉDÉE' : 'VERROUILLÉE'}</span></span>
       <span class="shop-item-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${classDefinition.icon}</svg></span>
       <h3>${classDefinition.name}</h3>
+      <p class="class-tagline">${classDefinition.tagline || ''}</p>
       <p>${classDefinition.description}</p>
       <span class="shop-item-bottom">${action}</span>
     `;
@@ -1910,18 +1911,18 @@ function renderShop() {
     card.className = `shop-item weapon-item${selected ? ' weapon-selected' : ''}`;
     card.style.setProperty('--shop-color', weapon.color);
     card.disabled = selected || (!owned && !canBuy);
-    card.setAttribute('aria-label', `${weapon.name}, ${owned ? 'possÃ©dÃ©e' : 'non possÃ©dÃ©e'}`);
+    card.setAttribute('aria-label', `${weapon.name}, ${owned ? 'possédée' : 'non possédée'}`);
 
     const action = selected
-      ? '<span class="shop-maxed">Ã‰QUIPÃ‰E</span>'
+      ? '<span class="shop-maxed">ÉQUIPÉE</span>'
       : owned
-        ? '<span class="shop-cost">Ã‰QUIPER</span><small>ACTIVER</small>'
+        ? '<span class="shop-cost">ÉQUIPER</span><small>ACTIVER</small>'
         : `<span class="shop-cost">${formatCredits(weapon.price)} CR</span><small>ACHETER</small>`;
     const isSlash = weapon.fireMode === 'slash';
     const projectileStat = weapon.pellets > 1 ? `<span>PROJECTILES <b>${weapon.pellets}</b></span>` : '';
     const pierceStat = weapon.pierce > 0 ? `<span>PERFORATION <b>${weapon.pierce + 1}</b></span>` : '';
     const targetStat = isSlash ? `<span>CIBLES <b>${weapon.slashTargets}</b></span>` : '';
-    const headshot = isSlash ? '' : `<span>TÃŠTE <b>${(weapon.headshotMultiplier ?? 1.65).toFixed(1)}x</b></span>`;
+    const headshot = isSlash ? '' : `<span>TÊTE <b>${(weapon.headshotMultiplier ?? 1.65).toFixed(1)}x</b></span>`;
     const magazineStat = isSlash ? '' : `<span>CHARGEUR <b>${weapon.magazine}</b></span>`;
     const reloadStat = isSlash ? '' : `<span>RECHARGE <b>${weapon.reload.toFixed(2)}s</b></span>`;
     const special = weapon.special || 'STANDARD';
@@ -1936,15 +1937,15 @@ function renderShop() {
       ? `<span>FRAPPES/S <b>${weapon.fireRate.toFixed(1)}</b></span>`
       : `<span>CADENCE <b>${weapon.fireRate.toFixed(1)}</b></span>`;
     const dpsStat = isSlash
-      ? `<span>DEGÃ‚TS/S <b>${Math.round(weapon.damage * weapon.fireRate * (weapon.slashTargets * 0.75 + 0.25))}</b></span>`
+      ? `<span>DEGÂTS/S <b>${Math.round(weapon.damage * weapon.fireRate * (weapon.slashTargets * 0.75 + 0.25))}</b></span>`
       : `<span>DPS <b>${Math.round(weapon.damage * weapon.fireRate * weapon.pellets * (weapon.pierce + 1) * 0.6)}</b></span>`;
-    const accuracyStat = isSlash ? '' : `<span>PRÃ‰CISION <b>${Math.round(Math.max(0, 100 - weapon.spread * 450))}%</b></span>`;
+    const accuracyStat = isSlash ? '' : `<span>PRÉCISION <b>${Math.round(Math.max(0, 100 - weapon.spread * 450))}%</b></span>`;
     const stats = [
       damageStat,
       dpsStat,
       rateStat,
       magazineStat,
-      `<span>PORTÃ‰E <b>${weapon.range} m</b></span>`,
+      `<span>PORTÉE <b>${weapon.range} m</b></span>`,
       accuracyStat,
       headshot,
       reloadStat,
@@ -1955,7 +1956,7 @@ function renderShop() {
     ].filter(Boolean).join('');
 
     card.innerHTML = `
-      <span class="shop-item-top"><span>${weapon.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÃ‰DÃ‰E' : 'VERROUILLÃ‰E'}</span></span>
+      <span class="shop-item-top"><span>${weapon.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÉDÉE' : 'VERROUILLÉE'}</span></span>
       <span class="shop-item-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${weapon.icon}</svg></span>
       <h3>${weapon.name}</h3>
       <p>${weapon.description}</p>
@@ -1980,23 +1981,23 @@ function renderShop() {
     card.className = `shop-item ability-item${selected ? ' ability-selected' : ''}`;
     card.style.setProperty('--shop-color', ability.color);
     card.disabled = selected || (!owned && !canBuy);
-    card.setAttribute('aria-label', `${ability.name}, ${owned ? 'possÃ©dÃ©e' : 'non possÃ©dÃ©e'}`);
+    card.setAttribute('aria-label', `${ability.name}, ${owned ? 'possédée' : 'non possédée'}`);
 
     const action = selected
-      ? '<span class="shop-maxed">Ã‰QUIPÃ‰E</span>'
+      ? '<span class="shop-maxed">ÉQUIPÉE</span>'
       : owned
-        ? '<span class="shop-cost">Ã‰QUIPER</span><small>ACTIVER</small>'
+        ? '<span class="shop-cost">ÉQUIPER</span><small>ACTIVER</small>'
         : `<span class="shop-cost">${formatCredits(ability.price)} CR</span><small>ACHETER</small>`;
     const duration = ability.duration > 0 ? `${ability.duration}s` : 'INSTANT';
     const stats = [
       `<span>RECHARGE <b>${ability.cooldown}s</b></span>`,
       `<span>DUREE <b>${duration}</b></span>`,
-      `<span>RAYON <b>${ability.radius || 'â€”'}</b></span>`,
+      `<span>RAYON <b>${ability.radius || '—'}</b></span>`,
       `<span>EFFET <b>${ability.effect}</b></span>`
     ].join('');
 
     card.innerHTML = `
-      <span class="shop-item-top"><span>${ability.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÃ‰DÃ‰E' : 'VERROUILLÃ‰E'}</span></span>
+      <span class="shop-item-top"><span>${ability.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÉDÉE' : 'VERROUILLÉE'}</span></span>
       <span class="shop-item-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${ability.icon}</svg></span>
       <h3>${ability.name}</h3>
       <p>${ability.description}</p>
@@ -2030,7 +2031,7 @@ function renderShop() {
     const pips = Array.from({ length: item.maxLevel }, (_, index) =>
       `<i class="${index < level ? 'active' : ''}"></i>`).join('');
     const action = maxed
-      ? '<span class="shop-maxed">Ã‰QUIPÃ‰ // MAX</span>'
+      ? '<span class="shop-maxed">ÉQUIPÉ // MAX</span>'
       : `<span class="shop-cost">${formatCredits(nextCost)} CR</span><small>ACHETER</small>`;
 
     card.innerHTML = `
@@ -2051,7 +2052,19 @@ function renderShop() {
   const classAbilities = Object.values(ABILITY_DEFINITIONS).filter((ability) => ability.classId === equippedClass);
   const ownedWeaponsCount = classWeapons.filter((weapon) => ownsWeapon(weapon.id)).length;
   const ownedAbilitiesCount = classAbilities.filter((ability) => ownsAbility(ability.id)).length;
-  ui.shopOwnedCount.textContent = `${equippedClass === 'ranger' ? 'RANGER' : 'ASSASSIN'} // ${ownedWeaponsCount} / ${classWeapons.length} ARMES // ${ownedAbilitiesCount} / ${classAbilities.length} CAPACITÃ‰S // ${installedCount} / ${visibleEquipment.length} MODULES`;
+  ui.shopOwnedCount.textContent = `${equippedClass === 'ranger' ? 'RANGER' : 'ASSASSIN'} // ${ownedWeaponsCount} / ${classWeapons.length} ARMES // ${ownedAbilitiesCount} / ${classAbilities.length} CAPACITÉS // ${installedCount} / ${visibleEquipment.length} MODULES`;
+  // Chaque carte est un <button>, et Chrome ne traite pas leur contenu comme
+  // une vraie colonne flex : le libelle du bas se superposait aux dernieres
+  // lignes de la description. On encapsule le contenu dans un div.
+  [ui.shopClasses, ui.shopWeapons, ui.shopAbilities, ui.shopItems].forEach((conteneur) => {
+    conteneur.querySelectorAll(':scope > .shop-item').forEach((carte) => {
+      if (carte.firstElementChild && carte.firstElementChild.classList.contains('shop-item-inner')) return;
+      const enveloppe = document.createElement('div');
+      enveloppe.className = 'shop-item-inner';
+      while (carte.firstChild) enveloppe.appendChild(carte.firstChild);
+      carte.appendChild(enveloppe);
+    });
+  });
   updateCreditsUI();
 }
 
@@ -2340,8 +2353,8 @@ function clearDynamicObjects() {
   enemyTargets.length = 0;
   syncRaycastTargets();
   navTimer = 0;
-  // scene.remove() ne libÃ¨re rien : sans dispose(), chaque partie quittÃ©e
-  // laisse ses gÃ©omÃ©tries et matÃ©riaux dans les buffers GPU.
+  // scene.remove() ne libère rien : sans dispose(), chaque partie quittée
+  // laisse ses géométries et matériaux dans les buffers GPU.
   particles.splice(0).forEach((particle) => {
     scene.remove(particle.mesh);
     releaseDebrisMaterial(particle.mesh.material);
@@ -3513,8 +3526,8 @@ function updatePlayer(delta) {
   player.abilityCooldown = Math.max(0, player.abilityCooldown - delta);
   const wasAbilityActive = player.abilityTimer > 0;
   player.abilityTimer = Math.max(0, player.abilityTimer - delta);
-  // Les bonus temporaires doivent retomber Ã  zÃ©ro exactement Ã  l'expiration,
-  // sinon ils survivraient jusqu'Ã  la prochaine activation.
+  // Les bonus temporaires doivent retomber à zéro exactement à l'expiration,
+  // sinon ils survivraient jusqu'à la prochaine activation.
   if (wasAbilityActive && player.abilityTimer === 0) {
     player.abilityDamageBonus = 0;
     player.abilityKillHeal = 0;
@@ -3542,9 +3555,9 @@ function updatePlayer(delta) {
     if (player.reloadRemaining <= 0) {
       player.reloadRemaining = 0;
       player.ammo = player.magazineSize;
-      if (hudCache.reload !== 'SYSTÃˆME PRÃŠT') {
-        ui.reloadStatus.textContent = 'SYSTÃˆME PRÃŠT';
-        hudCache.reload = 'SYSTÃˆME PRÃŠT';
+      if (hudCache.reload !== 'SYSTÈME PRÊT') {
+        ui.reloadStatus.textContent = 'SYSTÈME PRÊT';
+        hudCache.reload = 'SYSTÈME PRÊT';
       }
     }
   }
@@ -3683,21 +3696,21 @@ function spawnAbilityEffect(radius, color) {
 function activateAbility() {
   if (state !== GAME_STATE.PLAYING) return;
   const isAssassin = player.classId === 'assassin';
-  // Sans capacitÃ© achetÃ©e, l'Assassin garde son dash : c'est sa seule
-  // ressource de base, elle ne doit pas disparaÃ®tre au rang 0.
+  // Sans capacité achetée, l'Assassin garde son dash : c'est sa seule
+  // ressource de base, elle ne doit pas disparaître au rang 0.
   if (isAssassin && !player.abilityId) {
     activateDash();
     return;
   }
   const ability = getAbilityDefinition(player.abilityId);
   if (!ability || ability.classId !== player.classId) {
-    abilityMessage = "ACHÃˆTE UNE CAPACITÃ‰ DANS L'ATELIER";
+    abilityMessage = "ACHÈTE UNE CAPACITÉ DANS L'ATELIER";
     abilityMessageTimer = 1.8;
     if (isAssassin) activateDash();
     return;
   }
   if (player.abilityCooldown > 0) {
-    abilityMessage = `CAPACITÃ‰ // RECHARGE ${player.abilityCooldown.toFixed(1)}s`;
+    abilityMessage = `CAPACITÉ // RECHARGE ${player.abilityCooldown.toFixed(1)}s`;
     abilityMessageTimer = 0.8;
     return;
   }
@@ -3718,7 +3731,7 @@ function activateAbility() {
       }
     });
     spawnAbilityEffect(radius, hex);
-    abilityMessage = 'NOVA // DÃ‰GÃ‚TS DE ZONE';
+    abilityMessage = 'NOVA // DÉGÂTS DE ZONE';
   } else if (ability.id === 'cryo') {
     [...enemies].forEach((enemy) => {
       if (enemy.dead) return;
@@ -3734,7 +3747,7 @@ function activateAbility() {
   } else if (ability.id === 'overload') {
     player.overdriveTimer = ability.duration;
     spawnAbilityEffect(3.5, hex);
-    abilityMessage = 'OVERDRIVE // ARME SURCHARGÃ‰E';
+    abilityMessage = 'OVERDRIVE // ARME SURCHARGÉE';
   } else if (ability.id === 'shadowStep') {
     // Reset du dash : l'Assassin peut s'enfuir en boucle tant que la
     // capacite dure, ce qui en fait le vrai outil de survie du melee.
@@ -3753,7 +3766,7 @@ function activateAbility() {
     player.abilityKillHeal = ability.killHeal;
     player.abilityDamageBonus = ability.damageMultiplier - 1;
     spawnAbilityEffect(4, hex);
-    abilityMessage = 'SANG-DÃ‰CHIRÃ‰ // VAMPIRE';
+    abilityMessage = 'SANG-DÉCHIRÉ // VAMPIRE';
   } else if (ability.id === 'shadowHourglass') {
     let healthiest = null;
     [...enemies].forEach((enemy) => {
@@ -3782,9 +3795,9 @@ function activateAbility() {
 // compterait les tirs aux epaules comme des headshots.
 const headTestCenter = new THREE.Vector3();
 const headTestOffset = new THREE.Vector3();
-// Normale d'impact enemy : orientÃ©e de l'ennemi vers le point touchÃ©, ce qui
-// donne une gerbe qui part vers l'extÃ©rieur sans dependre de face.normal
-// (qui est en espace local de l'objet, non transformÃ©).
+// Normale d'impact enemy : orientée de l'ennemi vers le point touché, ce qui
+// donne une gerbe qui part vers l'extérieur sans dependre de face.normal
+// (qui est en espace local de l'objet, non transformé).
 const impactNormal = new THREE.Vector3();
 
 function isHeadshotHit(enemy, hitDistance) {
@@ -4010,8 +4023,8 @@ function createTracer(start, end, color) {
   tracers.push({ line, life: 0.075, maxLife: 0.075 });
 }
 
-// Les dÃ©bris nÃ©cessitent un matÃ©riau par particule (le fondu est indÃ©pendant),
-// mais on recycle les matÃ©riaux au lieu de les allouer et dÃ©truire en boucle.
+// Les débris nécessitent un matériau par particule (le fondu est indépendant),
+// mais on recycle les matériaux au lieu de les allouer et détruire en boucle.
 function acquireDebrisMaterial(color, additive) {
   const material = debrisMaterialPool.pop() || new THREE.MeshBasicMaterial();
   material.color.set(color);
@@ -4274,8 +4287,8 @@ function completeWave() {
   if (state !== GAME_STATE.PLAYING) return;
   const choices = getUpgradeChoices();
   if (choices.length === 0) {
-    // Tous les modules sont au niveau maximum : on enchaÃ®ne sur la vague
-    // suivante plutÃ´t que d'afficher un Ã©cran vide oÃ¹ aucun clic ne fait rien.
+    // Tous les modules sont au niveau maximum : on enchaîne sur la vague
+    // suivante plutôt que d'afficher un écran vide où aucun clic ne fait rien.
     ui.waveBanner.classList.remove('show');
     startWave();
     return;
@@ -4300,8 +4313,8 @@ function getUpgradeChoices() {
     const j = Math.floor(Math.random() * (i + 1));
     [available[i], available[j]] = [available[j], available[i]];
   }
-  // Aucun remplissage de secours : une carte dÃ©jÃ  au niveau maximum ferait
-  // sortir chooseUpgrade sans rien appliquer, laissant l'Ã©cran bloquÃ© sans issue.
+  // Aucun remplissage de secours : une carte déjà au niveau maximum ferait
+  // sortir chooseUpgrade sans rien appliquer, laissant l'écran bloqué sans issue.
   return available.slice(0, 3);
 }
 
@@ -4323,7 +4336,7 @@ function showUpgradeChoices(choices) {
       <span class="card-rarity">${origin} // NIVEAU ${currentLevel + 1}</span>
       <h3>${upgrade.name}</h3>
       <p>${upgrade.description}</p>
-      <span class="card-footer"><span class="level-pips">${pips}</span><span>INSTALLER â†’</span></span>
+      <span class="card-footer"><span class="level-pips">${pips}</span><span>INSTALLER →</span></span>
     `;
     button.addEventListener('click', () => chooseUpgrade(upgrade.key));
     ui.upgradeOptions.appendChild(button);
@@ -4336,8 +4349,8 @@ function showUpgradeChoices(choices) {
 function chooseUpgrade(key) {
   if (state !== GAME_STATE.UPGRADE) return;
   const definition = UPGRADE_DEFINITIONS[key];
-  // Filet de sÃ©curitÃ© : un module au maximum ne doit jamais laisser l'Ã©cran
-  // d'amÃ©lioration ouvert, on enchaÃ®ne donc sur la vague suivante.
+  // Filet de sécurité : un module au maximum ne doit jamais laisser l'écran
+  // d'amélioration ouvert, on enchaîne donc sur la vague suivante.
   if (!definition || player.upgrades[key] >= definition.max) {
     state = GAME_STATE.PLAYING;
     ui.upgrade.classList.remove('active');
@@ -4412,15 +4425,15 @@ function endGame() {
   ui.finalKills.textContent = String(kills);
   ui.finalScore.textContent = score.toLocaleString('fr-FR');
   ui.finalReward.textContent = `+${formatCredits(lastReward.total)} CR`;
-  ui.performanceRating.textContent = `PERFORMANCE // ${lastReward.rating} // ${Math.round(lastReward.accuracy * 100)}% PRÃ‰CISION`;
+  ui.performanceRating.textContent = `PERFORMANCE // ${lastReward.rating} // ${Math.round(lastReward.accuracy * 100)}% PRÉCISION`;
   ui.rewardBreakdown.textContent = [
     `VAGUE +${formatCredits(lastReward.waveCredits)}`,
-    `Ã‰LIMINATIONS +${formatCredits(lastReward.eliminationCredits)}`,
+    `ÉLIMINATIONS +${formatCredits(lastReward.eliminationCredits)}`,
     `SCORE +${formatCredits(lastReward.scoreCredits)}`,
-    `PRÃ‰CISION +${formatCredits(lastReward.accuracyCredits)}`,
+    `PRÉCISION +${formatCredits(lastReward.accuracyCredits)}`,
     `HEADSHOTS +${formatCredits(lastReward.headshotCredits)}`,
     `SURVIE +${formatCredits(lastReward.survivalCredits)}`,
-    `EFFICACITÃ‰ +${formatCredits(lastReward.efficiencyCredits)}`
+    `EFFICACITÉ +${formatCredits(lastReward.efficiencyCredits)}`
   ].join(' // ');
   ui.bestScore.textContent = `MEILLEUR SCORE // ${bestScore.toLocaleString('fr-FR')}`;
   updateCreditsUI();
@@ -4458,7 +4471,7 @@ function returnToMenu() {
   updateCreditsUI();
   updateMapUI();
   updateClassUI();
-  showSaveStatus('SESSION SAUVEGARDÃ‰E // MENU', 'success');
+  showSaveStatus('SESSION SAUVEGARDÉE // MENU', 'success');
 }
 
 function startNewGame() {
@@ -4510,13 +4523,13 @@ function updateHUD() {
     ui.ammoValue.textContent = ammo;
     hudCache.ammo = ammo;
   }
-  if (ui.reserveValue && hudCache.reserve !== 'âˆž') {
-    ui.reserveValue.textContent = 'âˆž';
-    hudCache.reserve = 'âˆž';
+  if (ui.reserveValue && hudCache.reserve !== '∞') {
+    ui.reserveValue.textContent = '∞';
+    hudCache.reserve = '∞';
   }
   // Le HUD lit desormais la definition reelle de l'arme : avant il affichait
   // un libelle code en dur, ce qui cachait le fait que l'Assassin peut
-  // Ã©quiper une arme Ã  distance comme le shuriken.
+  // équiper une arme à distance comme le shuriken.
   const weaponDefinition = getWeaponDefinition(player.weaponId);
   const weaponName = weaponDefinition.name;
   if (hudCache.weaponName !== weaponName) {
@@ -4540,12 +4553,12 @@ function updateHUD() {
     : ability
       ? player.abilityCooldown > 0
         ? `RECHARGE // ${player.abilityCooldown.toFixed(1)}s`
-        : 'ESPACE // PRÃŠT'
+        : 'ESPACE // PRÊT'
       : hasDash
         ? player.dashCooldown > 0
           ? `DASH // ${player.dashCooldown.toFixed(1)}s`
-          : 'ESPACE // DASH PRÃŠT'
-        : "Ã‰QUIPE UNE CAPACITÃ‰ DANS L'ATELIER";
+          : 'ESPACE // DASH PRÊT'
+        : "ÉQUIPE UNE CAPACITÉ DANS L'ATELIER";
   const abilityText = ability ? ability.name : hasDash ? 'DASH OMBRE' : 'AUCUNE';
   if (hudCache.abilityName !== abilityText) {
     ui.abilityName.textContent = abilityText;
@@ -4563,7 +4576,7 @@ function updateHUD() {
   // lieu de faire un querySelector a chaque tick.
   if (!ui.abilityHeading) ui.abilityHeading = ui.abilityReadout.querySelector('span');
   if (ui.abilityHeading) {
-    const headingText = ability ? 'CAPACITÃ‰ // ESPACE' : 'DASH // ESPACE';
+    const headingText = ability ? 'CAPACITÉ // ESPACE' : 'DASH // ESPACE';
     if (hudCache.abilityHeading !== headingText) {
       ui.abilityHeading.textContent = headingText;
       hudCache.abilityHeading = headingText;
@@ -4576,7 +4589,7 @@ function updateHUD() {
       ? 'FRAPPE // ACTIVE'
       : player.dashCooldown > 0
         ? `DASH // ${player.dashCooldown.toFixed(1)}s`
-        : 'DASH // PRÃŠT';
+        : 'DASH // PRÊT';
     ui.reloadStatus.classList.toggle('active', player.slashTimer > 0 || player.dashCooldown > 0);
     if (hudCache.reload !== assassinStatus) {
       ui.reloadStatus.textContent = assassinStatus;
@@ -4584,7 +4597,7 @@ function updateHUD() {
     }
   } else if (getWeaponDefinition(player.weaponId).fireMode === 'slash') {
     // Sabre equipe : pas de chargeur, on montre la frappe.
-    const slashStatus = player.slashTimer > 0 ? 'FRAPPE // ACTIVE' : 'MÃ‰LÃ‰E // PRÃŠT';
+    const slashStatus = player.slashTimer > 0 ? 'FRAPPE // ACTIVE' : 'MÉLÉE // PRÊT';
     ui.reloadStatus.classList.toggle('active', player.slashTimer > 0);
     if (hudCache.reload !== slashStatus) {
       ui.reloadStatus.textContent = slashStatus;
@@ -4592,9 +4605,9 @@ function updateHUD() {
     }
   } else if (player.reloadRemaining <= 0) {
     ui.reloadStatus.classList.remove('active');
-    if (hudCache.reload !== 'SYSTÃˆME PRÃŠT') {
-      ui.reloadStatus.textContent = 'SYSTÃˆME PRÃŠT';
-      hudCache.reload = 'SYSTÃˆME PRÃŠT';
+    if (hudCache.reload !== 'SYSTÈME PRÊT') {
+      ui.reloadStatus.textContent = 'SYSTÈME PRÊT';
+      hudCache.reload = 'SYSTÈME PRÊT';
     }
   }
 
@@ -4619,7 +4632,7 @@ function updateHUD() {
       .slice(0, 6)
       .map((item) => `<span class="equipment-chip">${item.short}<b>${item.level}</b></span>`)
       .join('');
-    ui.equipmentList.innerHTML = chips || '<span class="equipment-chip">SYSTÃˆME<b>STANDARD</b></span>';
+    ui.equipmentList.innerHTML = chips || '<span class="equipment-chip">SYSTÈME<b>STANDARD</b></span>';
     hudCache.equipment = equipmentSignature;
   }
 }
@@ -4729,7 +4742,7 @@ function requestPointerLock() {
     const request = canvas.requestPointerLock();
     if (request && typeof request.catch === 'function') request.catch(() => {});
   } catch {
-    // Le navigateur peut refuser le pointer lock dans un onglet headless ou sandboxÃ©.
+    // Le navigateur peut refuser le pointer lock dans un onglet headless ou sandboxé.
   }
 }
 
@@ -4873,8 +4886,8 @@ function frame(time) {
 
   updateEffects(delta);
   updateSceneAnimations(delta);
-  // RafraÃ®chissement espacÃ© de la shadow map : les ennemis bougent et
-  // projettent une ombre, mais 20 Hz suffisent et coÃ»tent bien moins cher.
+  // Rafraîchissement espacé de la shadow map : les ennemis bougent et
+  // projettent une ombre, mais 20 Hz suffisent et coûtent bien moins cher.
   if (PERFORMANCE_PROFILE.shadows && state === GAME_STATE.PLAYING) {
     shadowFrameCounter += 1;
     if (shadowFrameCounter >= SHADOW_REFRESH_FRAMES) {
@@ -4925,8 +4938,8 @@ try {
   ui.loading.innerHTML = `
     <div style="max-width:520px;padding:28px;text-align:center;border:1px solid #ff3158;color:#ff9bab;font:12px monospace;line-height:1.6">
       <strong>INITIALISATION IMPOSSIBLE</strong><br><br>
-      WebGL 2 est nÃ©cessaire pour lancer Nexus Breach.<br>
-      VÃ©rifiez l'accÃ©lÃ©ration matÃ©rielle de votre navigateur, puis rechargez la page.
+      WebGL 2 est nécessaire pour lancer Nexus Breach.<br>
+      Vérifiez l'accélération matérielle de votre navigateur, puis rechargez la page.
     </div>
   `;
 }

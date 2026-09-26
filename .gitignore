@@ -1,4 +1,4 @@
-﻿# Visual Studio
+# Visual Studio
 .vs/
 *.user
 *.suo
@@ -18,7 +18,9 @@ Thumbs.db
 
 # Sauvegarde des fichiers d'origine (garde-fou local, pas de versionnement)
 _originaux/
-_edgeprofile/
+_edgeprofile*/
+__shopshot.html
+capture-*.png
 __smoke.html
 __preview-*.html
 

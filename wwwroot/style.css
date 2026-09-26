@@ -738,7 +738,9 @@ button {
 .shop-weapons { margin-bottom: 4px; }
 .shop-weapons .shop-item { min-height: 270px; }
 .shop-classes { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 4px; }
-.shop-classes .shop-item { min-height: 220px; }
+/* Les descriptions de classe sont plus longues que celles des armes :
+   on leur laisse la place de tenir sur trois lignes. */
+.shop-classes .shop-item { min-height: 250px; }
 .weapon-stats { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
 .weapon-stats span { padding: 4px 5px; border: 1px solid rgba(0, 245, 255, 0.14); color: #9db4bc; font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.05em; }
 .weapon-stats b { color: var(--shop-color); font-weight: 500; }
@@ -760,10 +762,9 @@ button {
 .shop-item {
   --shop-color: var(--cyan);
   position: relative;
-  display: flex;
+  display: block;
   min-height: 285px;
   padding: 18px;
-  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--line);
   background:
@@ -824,9 +825,47 @@ button {
 .shop-item-top span:last-child { color: #78909a; }
 .shop-item-visual { display: grid; width: 62px; height: 62px; margin: 17px auto 15px; place-items: center; color: var(--shop-color); filter: drop-shadow(0 0 12px color-mix(in srgb, var(--shop-color) 30%, transparent)); }
 .shop-item-visual svg { width: 52px; height: 52px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+/* Les enfants d'une colonne flex sont compresses sous leur contenu quand la
+   carte est trop courte. Comme la carte a une hauteur fixe, une description
+   plus longue que prevu finissait par passer sous le libelle du bas, qui se
+   superposait aux dernières lignes. flex-shrink: 0 rend chaque bloc non
+   compressible : la carte grandit a la place de se chevaucher. */
+/* Le contenu de la carte vit dans un vrai conteneur flex.
+   Les cartes sont des <button> : en Chrome, un button n'a pas le meme
+   comportement de mise en page qu'un div, son contenu interne ne respecte ni
+   min-height ni margin-top: auto. Resultat observe : le libelle du bas se
+   superposait aux dernieres lignes de la description. En isolant le contenu
+   dans un div, la colonne flex se comporte normalement. */
+.shop-item-inner {
+  display: flex;
+  height: 100%;
+  min-height: inherit;
+  flex-direction: column;
+}
+
+.shop-item-inner > * { flex-shrink: 0; }
+/* Sous-titre de classe : ce que la classe fait vraiment, en une ligne. */
+.shop-item .class-tagline { min-height: 0; margin-bottom: 6px; color: var(--shop-color); font-size: 8px; letter-spacing: 0.1em; }
 .shop-item h3 { margin: 0 0 8px; font-size: 20px; line-height: 0.95; letter-spacing: -0.03em; }
-.shop-item p { min-height: 43px; margin: 0; color: #8ba0aa; font-family: var(--font-mono); font-size: 9px; line-height: 1.5; }
-.shop-item-bottom { position: relative; z-index: 1; margin-top: auto; padding-top: 16px; color: var(--shop-color); font-size: 9px; }
+/* La description est bornee a trois lignes. Sans cette limite, un fort zoom
+   du navigateur ou une fenetre etroite fait deborder le texte hors de son
+   emplacement, et le libelle du bas passe par-dessus. Le nombre de lignes
+   reste fixe, donc la mise en page ne depend plus du contexte. */
+.shop-item p {
+  display: -webkit-box;
+  min-height: 43px;
+  margin: 0;
+  overflow: hidden;
+  color: #8ba0aa;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+/* .shop-item-bottom est le seul bloc qui doit pousser vers le bas. */
+.shop-item-inner > .shop-item-bottom { position: relative; z-index: 1; flex-shrink: 0; margin-top: auto; padding-top: 16px; color: var(--shop-color); font-size: 9px; }
 .shop-item-bottom small { color: #78909a; font-size: 8px; }
 .shop-item-bottom .shop-cost { color: var(--gold); }
 .shop-item-bottom .shop-maxed { color: var(--green); }
