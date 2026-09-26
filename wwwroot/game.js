@@ -295,6 +295,34 @@ const GAME_STATE = Object.freeze({
   DEAD: 'dead'
 });
 
+// Le rayon de collision d'un ennemi vaut rayon * echelle. Les Alpha
+// atteignaient 3 a 3.5 unites : ils ne pouvaient donc pas etre atteints au
+// corps a corps (portee de sabre 3.6 a 4.4) et restaient bloques contre la
+// geometrie. Leur silhouette reste celle d'un gros monstre, mais leurs
+// collisions et leurs points de vie sont ramenes a une echelle tenable.
+// Premiere apparition d'un Alpha. A la vague 5 il foulait le joueur avant
+// qu'il n'ait eu le temps de batir un equipement : 680 PV de base, soit 1142
+// apres le multiplicateur de vague, et une cadence d'attaque plus rapide que
+// celle d'un ennemi ordinaire. Il apparait des la vague 8, quand le joueur a
+// deja quelques ameliorations.
+//
+// Ces deux constantes sont declarees AVANT les tables d'ennemis qui les
+// utilisent. Les placer plus bas produisait une erreur de zone morte
+// temporelle qui empechait le jeu de demarrer, exactement comme
+// CLASS_DEFAULT_WEAPON avant que le test de sauvegarde ancienne ne le revele.
+const ALPHA_PREMIERE_VAGUE = 8;
+
+// Le rayon de collision d'un ennemi vaut rayon * echelle. Les Alpha
+// atteignaient 3 a 3.5 unites : ils ne pouvaient donc pas etre atteints au
+// corps a corps (portee de sabre 3.6 a 4.4) et restaient bloques contre la
+// geometrie. Leur silhouette reste celle d'un gros monstre, mais leurs
+// collisions et leurs points de vie sont ramenes a une echelle tenable.
+//
+// Declaree avant ENEMY_TYPES, qui l'utilise. La placer apres produisait une
+// erreur de zone morte temporelle qui empechait le jeu de demarrer, comme
+// CLASS_DEFAULT_WEAPON avant que le test de sauvegarde ancienne ne le revele.
+const ALPHA_STATS = { hp: 320, damage: 17, radius: 0.98, speed: 1.3 };
+
 const ENEMY_TYPES = {
   crawler: {
     name: 'Rôdeur',
@@ -331,10 +359,10 @@ const ENEMY_TYPES = {
   },
   titan: {
     name: 'Alpha',
-    hp: 680,
-    speed: 1.18,
-    damage: 29,
-    radius: 1.45,
+    hp: ALPHA_STATS.hp,
+    speed: ALPHA_STATS.speed,
+    damage: ALPHA_STATS.damage,
+    radius: ALPHA_STATS.radius,
     scale: 2.05,
     color: 0xff2d85,
     score: 1200,
@@ -394,10 +422,10 @@ const FOUNDRY_ENEMY_TYPES = {
   },
   foundryAlpha: {
     name: 'Forge-Monarque',
-    hp: 1080,
-    speed: 1.26,
-    damage: 43,
-    radius: 1.58,
+    hp: ALPHA_STATS.hp * 1.3,
+    speed: ALPHA_STATS.speed * 0.95,
+    damage: ALPHA_STATS.damage * 1.25,
+    radius: ALPHA_STATS.radius * 1.1,
     scale: 2.2,
     color: 0xff2d85,
     armorColor: 0x2c1830,
@@ -3339,12 +3367,12 @@ function disposeEnemy(enemy) {
 function chooseEnemyType(waveNumber) {
   const map = MAP_DEFINITIONS[currentMapIndex];
   if (map.enemyTypeSet === 'foundry') {
-    if (waveNumber >= 5 && waveNumber % 5 === 0 && Math.random() < 0.22) return 'foundryAlpha';
+    if (waveNumber >= ALPHA_PREMIERE_VAGUE && waveNumber % 5 === 0 && Math.random() < 0.22) return 'foundryAlpha';
     if (waveNumber >= 3 && Math.random() < 0.38) return 'ironBrute';
     if (waveNumber >= 2 && Math.random() < 0.5) return 'emberStalker';
     return 'slagCrawler';
   }
-  if (waveNumber >= 5 && waveNumber % 5 === 0 && Math.random() < 0.18) return 'titan';
+  if (waveNumber >= ALPHA_PREMIERE_VAGUE && waveNumber % 5 === 0 && Math.random() < 0.18) return 'titan';
   if (waveNumber >= 3 && Math.random() < 0.3) return 'brute';
   if (waveNumber >= 2 && Math.random() < 0.46) return 'hunter';
   return 'crawler';
@@ -3555,11 +3583,35 @@ function getFlowDirection(position, target = flowDirectionTarget) {
   return targetCell.lengthSq() > 0.001 ? targetCell.normalize() : null;
 }
 
+// Un ennemi de grand rayon ne peut pas se faufiler entre deux obstacles : il
+// se fait refuser presque chaque pas et reste fige sur place. Le champ de
+// navigation, lui, est construit pour un rayon de 0.78, donc un grosse
+// creature n'a aucune chance de suivre un chemin designed pour elle.
+//
+// On borne donc le rayon de collision utilise pour le deplacement, et on
+// laisse glisser le long des obstacles : un ennemi bloque tente un pas
+// diagonal avant de s'arreter, ce qui evite qu'il reste coince dans un coin.
+const MOUVEMENT_RAYON_MAX = 0.95;
+
 function moveEntity(position, dx, dz, radius) {
+  const collisionRadius = Math.min(radius, MOUVEMENT_RAYON_MAX);
   const nextX = position.x + dx;
-  if (!isBlocked(nextX, position.z, radius)) position.x = nextX;
   const nextZ = position.z + dz;
-  if (!isBlocked(position.x, nextZ, radius)) position.z = nextZ;
+  const bloqueX = isBlocked(nextX, position.z, collisionRadius);
+  const bloqueZ = isBlocked(position.x, nextZ, collisionRadius);
+  if (!bloqueX && !bloqueZ) {
+    position.x = nextX;
+    position.z = nextZ;
+    return;
+  }
+  if (!bloqueX) { position.x = nextX; return; }
+  if (!bloqueZ) { position.z = nextZ; return; }
+  // Les deux axes sont refuses : on tente un pas diagonal, qui passe
+  // souvent alors que chaque axe seul est bloque.
+  if (!isBlocked(nextX, nextZ, collisionRadius)) {
+    position.x = nextX;
+    position.z = nextZ;
+  }
 }
 
 function updatePlayer(delta) {
@@ -4272,7 +4324,14 @@ function updateEnemies(delta) {
     enemy.attackCooldown -= delta;
     enemy.attackPulse = Math.max(0, enemy.attackPulse - delta * 2.2);
     if (distance < attackDistance && enemy.attackCooldown <= 0) {
-      const baseAttackCooldown = enemy.elite ? 1.15 : WAVE_CURVES.attackCooldown(wave);
+      // Un elite tape 25 % plus vite qu'un ennemi ordinaire, et non plus vite
+      // que la cadence de la vague. La valeur precedente (1.15 s) etait plus
+      // rapide que celle de n'importe quel ennemi normal jusqu'a la vague 20 :
+      // un Alpha debutant infligeait 28 degats par seconde, soit la mort en
+      // quatre secondes.
+      const baseAttackCooldown = enemy.elite
+        ? Math.max(1.05, WAVE_CURVES.attackCooldown(wave) * 0.75)
+        : WAVE_CURVES.attackCooldown(wave);
       const mapAttackMultiplier = MAP_DEFINITIONS[currentMapIndex].attackCooldownMultiplier;
       enemy.attackCooldown = baseAttackCooldown * mapAttackMultiplier;
       enemy.attackPulse = 1;

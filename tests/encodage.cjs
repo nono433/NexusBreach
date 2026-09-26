@@ -55,9 +55,10 @@ function parcourir(dir) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) { parcourir(full); continue; }
     if (!/\.(js|mjs|cjs|css|html|md|json|bat)$/i.test(entry.name)) continue;
-    // Ces deux fichiers contiennent les motifs de detection en toutes lettres :
-    // ils se signaleraient eux-memes sans que le jeu soit corrompu.
-    if (entry.name === 'encodage.cjs' || entry.name === 'reparer-encodage.cjs') continue;
+    // Ces fichiers contiennent les motifs de detection ou l'alphabet de
+    // reference en toutes lettres : ils se signaleraient eux-memes sans que
+    // le jeu soit corrompu.
+    if (['encodage.cjs', 'reparer-encodage.cjs', 'audit-encodage.cjs', 'verif-en-ligne.cjs'].includes(entry.name)) continue;
     cibles.push(full);
   }
 }

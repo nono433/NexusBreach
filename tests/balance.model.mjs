@@ -12,6 +12,15 @@
 //     se gagnent a chaque mort, donc un joueur qui meurt beaucoup les empile.
 //     C'est verifie par le scenario 'atelier plein' de balance.check.mjs.
 
+// Un elite tape 25 % plus vite que la cadence de la vague, avec un plancher.
+// Le modele l'ignorait entierement : c'est pourquoi il annoncait "mort vague
+// 9" alors qu'un Alpha debutant infligeait 28 degats par seconde.
+export const ELITE_CADENCE = (wave) => Math.max(1.05, CURVES.attackCooldown(wave) * 0.75);
+
+// Premiere apparition d'un Alpha, et probabilite sur les vagues multiples de 5.
+export const ALPHA_PREMIERE_VAGUE = 8;
+export const ALPHA_CHANCE = 0.18;
+
 export const CURVES = {
   hpMult: (w) => Math.min(8.5, 1 + 0.17 * (w - 1)),
   dmgMult: (w) => Math.min(1.7, 1 + 0.026 * (w - 1)),
@@ -50,13 +59,13 @@ export const ENEMIES = {
     trash: { hp: 48, damage: 9, speed: 2.35, score: 100 },
     swift: { hp: 36, damage: 7, speed: 3.65, score: 130 },
     tank: { hp: 145, damage: 19, speed: 1.58, score: 260 },
-    elite: { hp: 680, damage: 29, speed: 1.18, score: 1200 }
+    elite: { hp: 320, damage: 17, speed: 1.3, score: 1200 }
   },
   foundry: {
     trash: { hp: 64, damage: 12, speed: 2.5, score: 145 },
     swift: { hp: 48, damage: 9, speed: 4.05, score: 190 },
     tank: { hp: 230, damage: 28, speed: 1.66, score: 430 },
-    elite: { hp: 1080, damage: 43, speed: 1.26, score: 2100 }
+    elite: { hp: 320 * 1.3, damage: 17 * 1.25, speed: 1.3 * 0.95, score: 2100 }
   }
 };
 
@@ -178,4 +187,75 @@ export function simulate({ mapId = 'nexus', weaponId = 'pulse', archetype = 'sus
     });
   }
   return rows;
+}
+
+// Analyse une vague qui contient des Alpha (multiple de 5, au-dela de
+// ALPHA_PREMIERE_VAGUE). Le tableau general les lisse dans la moyenne, ce qui
+// les rendait invisibles : le joueur les rencontrait pourtant, en paquet, sur
+// une vague entiere.
+//
+// Le cas Assassin est traite explicitement. Au corps a corps, ce qui compte
+// n'est pas le DPS mais le rapport entre le temps pour tuer un Alpha et le
+// temps avant d'en mourir : c'est ce rapport qui rendait la classe inutilisable
+// contre ces monstres.
+export function analyseVagueAlpha(wave, archetype, weaponId, mapKey, deaths) {
+  const map = MAPS[mapKey];
+  const set = mapKey === 'foundry' ? ENEMIES.foundry : ENEMIES.nexus;
+  const hpMult = CURVES.hpMult(wave) * map.hpMult;
+  const dmgMult = CURVES.dmgMult(wave) * map.dmgMult;
+  const eliteCooldown = ELITE_CADENCE(wave) * map.atkMult;
+  const normalCooldown = CURVES.attackCooldown(wave) * map.atkMult;
+  const concurrent = CURVES.maxConcurrent(wave);
+  const spawnInterval = CURVES.spawnInterval(wave);
+
+  const investment = investmentFromDeaths(deaths);
+  const meta = expectedMetaLevel(investment);
+  const run = expectedRunUpgrades(wave, archetype);
+  const power = playerPower(weaponId, wave, meta, run);
+
+  // 18 % des apparitions sont des Alpha, le reste se repartit comme la moyenne.
+  const elitePart = ALPHA_CHANCE;
+  const restPart = 1 - elitePart;
+  const eliteHp = set.elite.hp * hpMult;
+  const eliteDamage = set.elite.damage * dmgMult;
+  const restDamage = (set.trash.damage * MIX.trash + set.swift.damage * MIX.swift
+    + set.tank.damage * MIX.tank) / (MIX.trash + MIX.swift + MIX.tank);
+
+  const eliteCount = Math.max(1, Math.round(concurrent * elitePart));
+  const restCount = Math.max(0, concurrent - eliteCount);
+
+  // Degats encaisses : chaque ennemi frappe a sa propre cadence.
+  const incomingPerSecond = eliteCount * (eliteDamage / eliteCooldown)
+    + restCount * (restDamage * dmgMult / normalCooldown);
+  const timeToDie = power.effectiveHp / incomingPerSecond;
+
+  // Pression en points de vie : les Alpha domineront toujours le tableau,
+  // ils sont les plus resistants.
+  const incomingHpPerSecond = (eliteCount * eliteHp + restCount * (set.trash.hp * hpMult)) / spawnInterval;
+  const sustained = (power.dps * power.targets) / incomingHpPerSecond;
+
+  // Corps a corps : le temps pour tuer un Alpha seul, face a lui seul.
+  const melee = archetype === 'assassin';
+  const timeToKillAlpha = power.dps * power.targets > 0 ? eliteHp / (power.dps * power.targets) : Infinity;
+  const survivalAgainstOne = power.effectiveHp / (eliteDamage / eliteCooldown);
+  const meleeRatio = survivalAgainstOne / Math.max(0.01, timeToKillAlpha);
+
+  return {
+    wave,
+    eliteCount,
+    concurrent,
+    eliteHp: Math.round(eliteHp),
+    eliteDamage: Math.round(eliteDamage),
+    eliteDps: Math.round((eliteDamage / eliteCooldown) * 10) / 10,
+    normalCooldown: Math.round(normalCooldown * 100) / 100,
+    eliteCooldown: Math.round(eliteCooldown * 100) / 100,
+    dps: Math.round(power.dps * power.targets),
+    effHp: Math.round(power.effectiveHp),
+    ttd: Math.round(timeToDie * 100) / 100,
+    sustained: Math.round(sustained * 100) / 100,
+    timeToKillAlpha: Math.round(timeToKillAlpha * 100) / 100,
+    survivalAgainstOne: Math.round(survivalAgainstOne * 100) / 100,
+    meleeRatio: Math.round(meleeRatio * 100) / 100,
+    melee
+  };
 }
