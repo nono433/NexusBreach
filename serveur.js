@@ -81,8 +81,40 @@ server.listen(PORT, HOST, () => {
   console.log('');
 });
 
+// Ouverture du navigateur, detachee du serveur.
+//
+// Deux pieges evites ici :
+//  1. Sur Windows, `start "http://..."` est interprete par cmd.exe comme un
+//     TITRE de fenetre, pas comme une URL : une invite de commandes vide
+//     s'ouvrait a la place du navigateur. La forme correcte est
+//     `start "" "url"`, avec un titre vide explicite.
+//  2. exec() herite des tubes de sortie du serveur, et le processus enfant
+//     pouvait entrainer la fermeture du serveur. spawn() avec detached et
+//     stdio:'ignore', suivi de unref(), rend l'enfant totalement
+//     independant.
+function openBrowser(url) {
+  try {
+    if (process.platform === 'win32') {
+      const child = require('node:child_process').spawn(
+        'cmd.exe',
+        ['/c', 'start', '""', url],
+        { detached: true, stdio: 'ignore' }
+      );
+      child.unref();
+    } else {
+      const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
+      const child = require('node:child_process').spawn(opener, [url], {
+        detached: true,
+        stdio: 'ignore'
+      });
+      child.unref();
+    }
+  } catch (error) {
+    // Le jeu reste jouable : il suffit d'ouvrir l'adresse manuellement.
+    console.log(`Ouvre manuellement : ${url}`);
+  }
+}
+
 if (!process.argv.includes('--no-browser')) {
-  const opener =
-    process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
-  require('node:child_process').exec(`${opener} "http://localhost:${PORT}"`);
+  openBrowser(`http://localhost:${PORT}`);
 }
