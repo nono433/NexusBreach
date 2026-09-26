@@ -50,6 +50,7 @@ const ui = {
   shopButton: document.querySelector('#shop-button'),
   gameoverShopButton: document.querySelector('#gameover-shop-button'),
   shopCloseButton: document.querySelector('#shop-close-button'),
+  pointerNote: document.querySelector('.pointer-note'),
   // Commandes tactiles : absentes du DOM sur un poste classique, le code
   // doit donc tolerate un null.
   touchLayer: document.querySelector('#touch-layer'),
@@ -4963,6 +4964,12 @@ function bindHoldButton(element, onPress, onRelease) {
 
 function initTouchControls() {
   document.documentElement.classList.toggle('touche', IS_TOUCH);
+  // Le menu annoncait la souris et la touche Echap : sur un telephone, ni
+  // l'une ni l'autre n'existent, et le message faisait croire au joueur que
+  // le jeu etait casse.
+  if (IS_TOUCH && ui.pointerNote) {
+    ui.pointerNote.textContent = 'Glissez à droite pour viser et tirer. Le bouton ❚❚ met en pause.';
+  }
   if (!IS_TOUCH) return;
 
   touchStick.element = ui.touchStick;

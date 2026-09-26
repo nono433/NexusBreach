@@ -67,7 +67,15 @@ server.listen(PORT, '127.0.0.1', () => {
         var h = d.getElementById('hud');
         return h && !h.classList.contains('hidden') && d.documentElement.classList.contains('touche-en-jeu');
       },
-      assertion: function () { return { coucheVisible: getComputedStyle(d.getElementById('touch-layer')).display !== 'none' }; } },
+      assertion: function () {
+        var note = d.querySelector('.pointer-note');
+        return {
+          coucheVisible: getComputedStyle(d.getElementById('touch-layer')).display !== 'none',
+          // Le menu ne doit pas parler de souris ni d'Echap au doigt : le
+          // message est ecrit par initTouchControls(), appele par init().
+          mentionMenu: note ? note.textContent : '(absent)'
+        };
+      } },
     { nom: 'joystick-apparu',
       agir: function () { pointeur('pointerdown', 1, 140, 300); },
       condition: function () { return d.getElementById('touch-stick').classList.contains('active'); },
