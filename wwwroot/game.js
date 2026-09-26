@@ -80,8 +80,8 @@ const CONFIG = {
   interactionRange: 70
 };
 
-// Un profil automatique évite de rendre le jeu inutilisable sur les GPU intégrés.
-// Le rendu reste net, mais avec une résolution et des ombres mieux adapté au matériel.
+// Un profil automatique Ã©vite de rendre le jeu inutilisable sur les GPU intÃ©grÃ©s.
+// Le rendu reste net, mais avec une rÃ©solution et des ombres mieux adaptÃ© au matÃ©riel.
 const PERFORMANCE_PROFILE = (() => {
   const cores = Number(navigator.hardwareConcurrency) || 8;
   const memory = Number(navigator.deviceMemory) || 8;
@@ -145,7 +145,7 @@ const MAP_DEFINITIONS = [
     id: 'foundry',
     name: 'SECTEUR 12 // FOUNDRY',
     short: 'FOUNDRY',
-    description: 'Zone de forge hostile : quatre machines d’élite, plus résistantes et plus mortelles.',
+    description: 'Zone de forge hostile : quatre machines dâ€™Ã©lite, plus rÃ©sistantes et plus mortelles.',
     background: 0x24121e,
     fogColor: 0x24121e,
     fogDensity: 0.024,
@@ -175,31 +175,80 @@ const MAP_DEFINITIONS = [
     spawnPads: [[-18, -18, 0], [18, -18, 0], [-18, 18, 0], [18, 18, 0], [0, -18, 0], [0, 18, 0]],
     core: [0, 0],
     enemyTypeSet: 'foundry',
-    enemyHealthMultiplier: 1.15,
-    enemySpeedMultiplier: 1.06,
-    enemyDamageMultiplier: 1.22,
-    attackCooldownMultiplier: 0.88,
-    scoreMultiplier: 1.35
+    // La carte doit rester plus dure que Nexus sans etre un goulot : avec
+    // 1.22 de degats et 0.88 de cadence, le meme equipement y mourait a la
+    // vague 12 la ou il atteignait la vague 42 sur Nexus.
+    enemyHealthMultiplier: 1.1,
+    enemySpeedMultiplier: 1.04,
+    enemyDamageMultiplier: 1.12,
+    attackCooldownMultiplier: 0.94,
+    scoreMultiplier: 1.4
   }
 ];
 
+// Toutes les courbes de vagues sont volontairement PLAFONNEES.
+//
+// Le joueur a un plafond de puissance fini : les ameliorations de vague ont
+// un nombre de niveaux limite, l'equipement permanent est fini, et les
+// armes sont en nombre fixe. Une seule courbe ennemie non plafonnee
+// garantit donc une mort arithmetique : la vague 50 demandait 304 ennemis
+// et la vague 100 en demandait 804, avec des PV et des degats linearly
+// croissants. En faisant converger les deux, la difficulte atteint un
+// plateau et la mort finit par survenir parce que le joueur a plafonne,
+// pas parce que la difficulte s'emballe.
+const WAVE_CURVES = {
+  // PV ennemis : le principal axe de progression, puis convergence.
+  enemyHealth: (wave) => Math.min(8.5, 1 + 0.17 * (wave - 1)),
+  // Degats : plafond bas. Au-dela, un seul coup suffit et la mort devient
+  // arithmetique. Avant : 1 + 0.09*(vague-1) sans borne, 5,4x a la vague 50.
+  enemyDamage: (wave) => Math.min(1.7, 1 + 0.026 * (wave - 1)),
+  attackCooldown: (wave) => Math.max(0.8, 1.5 - 0.016 * wave),
+  maxConcurrent: (wave) => Math.min(11, 4 + Math.floor(wave * 0.5)),
+  total: (wave) => Math.min(44, 6 + Math.round(wave * 1.9 + wave * wave * 0.014)),
+  // L'introduction est plus douce : la vague 1 ne doit pas tuer un joueur
+  // qui n'a jamais vu le jeu.
+  spawnInterval: (wave) => Math.max(0.36, (wave <= 3 ? 1.35 : 1.05) - wave * 0.042) * 0.9
+};
+
+// Chaque classe porte ses propres statistiques de base. Elles vivaient
+// auparavant en nombres magiques dans resetStats(), ce qui rendait
+// l'equilibrage des classes presque impossible a voir.
 const PLAYER_CLASSES = Object.freeze({
   ranger: {
     id: 'ranger',
     name: 'Ranger',
     short: 'RANGER',
-    description: 'Opérateur pulse polyvalent.',
+    tagline: 'TIR Ã€ DISTANCE Â· CONTRÃ”LE DE ZONE',
+    description: 'SpÃ©cialiste du tir Ã  distance. Plus de vie, une arme Ã  distance, et des capacitÃ©s qui couvrent le sol.',
     price: 0,
     color: '#00f5ff',
+    stats: {
+      health: 100,
+      speed: 6.1,
+      slashDamage: 0,
+      slashRate: 0,
+      slashRange: 0,
+      slashTargets: 0
+    },
     icon: '<path d="M32 7v46M15 17l17 15 17-15M18 48l14-16 14 16"/><circle cx="32" cy="32" r="8"/>'
   },
   assassin: {
     id: 'assassin',
     name: 'Assassin',
     short: 'ASSASSIN',
-    description: 'Sabres jumelles, frappe rapprochée et dash d’évasion.',
+    tagline: 'MÃ‰LÃ‰E Â· MOBILITÃ‰ Â· EXÃ‰CUTION',
+    description: 'Corps Ã  corps. Moins de vie, mais plus rapide, un dash dâ€™Ã©vasion, et des frappes qui tuent plus vite.',
     price: 2500,
     color: '#b17cff',
+    stats: {
+      health: 84,
+      speed: 7.3,
+      // DÃ©gÃ¢ts par frappe et cadence de base, avant amÃ©liorations.
+      slashDamage: 46,
+      slashRate: 2.7,
+      slashRange: 3.9,
+      slashTargets: 2
+    },
     icon: '<path d="m13 49 9-4 29-29-5-5-29 29-4 9Z"/><path d="m40 16 8-8 8 8-8 8M9 54l12-4M45 45l10 10"/><path d="m18 27 8 8"/>'
   }
 });
@@ -215,7 +264,7 @@ const GAME_STATE = Object.freeze({
 
 const ENEMY_TYPES = {
   crawler: {
-    name: 'Rôdeur',
+    name: 'RÃ´deur',
     hp: 48,
     speed: 2.35,
     damage: 9,
@@ -279,7 +328,7 @@ const FOUNDRY_ENEMY_TYPES = {
     spikeCount: 5
   },
   emberStalker: {
-    name: 'Rôdeur de Braise',
+    name: 'RÃ´deur de Braise',
     hp: 48,
     speed: 4.05,
     damage: 9,
@@ -334,148 +383,201 @@ const ENEMY_TYPE_SETS = {
   foundry: FOUNDRY_ENEMY_TYPES
 };
 
+// Ameliorations de vague. Chaque classe a son propre jeu : 7 exclusives
+// Ranger, 7 exclusives Assassin, 3 partagees (armure, mobilite, stabilite).
+// Le champ classId remplace les anciens drapeaux rangerOnly / assassinOnly.
 const UPGRADE_DEFINITIONS = {
-  damage: {
-    name: 'Canon amplifié',
-    description: '+32 % de dégâts par tir.',
-    short: 'PUISSANCE',
-    color: '#ff6b2c',
-    max: 6,
-    icon: '<path d="M9 35h27l14-9v-9L36 26H9l-5-8 5-8 5 8Zm8 0v13m8-13v13m-16-18 5 5 7-9"/><circle cx="46" cy="21" r="4"/>'
-  },
-  fireRate: {
-    name: 'Gâche rapide',
-    description: '+24 % de vitesse de tir.',
-    short: 'CADENCE',
-    color: '#00f5ff',
-    max: 6,
-    icon: '<path d="M36 7 17 29h13l-5 19 22-27H33l3-14Z"/><path d="M8 13h8M6 21h7M8 29h8M49 48h7M48 40h6"/>'
-  },
-  magazine: {
-    name: 'Chargeur étendu',
-    description: '+8 munitions par chargeur.',
-    short: 'CAPACITÉ',
-    color: '#62ff9a',
-    max: 6,
-    rangerOnly: true,
-    icon: '<path d="M12 15h40v34H12zM20 22h24v20H20zM24 8h16v7M32 27v10m-5-5h10"/>'
-  },
-  reload: {
-    name: 'Recharge instantanée',
-    description: '-24 % de temps de recharge.',
-    short: 'RECHARGE',
-    color: '#9b78ff',
-    max: 5,
-    rangerOnly: true,
-    icon: '<path d="M50 24A18 18 0 1 0 48 39M50 11v15H35M23 31h15M30.5 23.5v15"/>'
-  },
+  // --- Partagees -----------------------------------------------------------
   armor: {
+    classId: 'shared',
     name: 'Exosquelette',
-    description: '+28 PV maximum et soin immédiat.',
+    description: '+28 PV maximum et soin immÃ©diat.',
     short: 'ARMURE',
     color: '#5ca8ff',
     max: 7,
     icon: '<path d="M32 7 52 16v15c0 13-9 24-20 29C21 55 12 44 12 31V16L32 7Z"/><path d="M32 18v29M20 25l12 8 12-8M20 40l12-7 12 7"/>'
   },
   speed: {
+    classId: 'shared',
     name: 'Propulseurs',
-    description: '+13 % de vitesse de déplacement.',
-    short: 'MOBILITÉ',
+    description: '+6 % de vitesse de dÃ©placement.',
+    short: 'MOBILITÃ‰',
     color: '#22e6a8',
     max: 5,
     icon: '<path d="M31 6 18 34h12l-4 25 19-35H33l5-18Z"/><path d="M9 14h12M7 24h10M9 34h12M47 49h9"/>'
   },
-  pierce: {
-    name: 'Rayons perforants',
-    description: 'Touchez un hostile supplémentaire par tir.',
-    short: 'PERFORATION',
-    color: '#f6e45c',
-    max: 3,
-    rangerOnly: true,
-    icon: '<path d="m8 32 17-17 8 8L16 40l-8-8Z"/><path d="m25 15 8-8 8 8-8 8M34 39l8-8 12 12-8 8-12-12Z"/><path d="m45 12 10-5M41 18l12 2"/>'
-  },
-  repair: {
-    name: 'Nanites réparateurs',
-    description: 'Récupérez +1,2 PV par seconde.',
-    short: 'RÉGÉNÉRATION',
-    color: '#ff77c8',
-    max: 6,
-    icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M20 28h8l3-6 4 13 3-7h8"/>'
-  },
   stabilize: {
+    classId: 'shared',
     name: 'Stabilisateurs',
-    description: 'Réduisez les dégâts subis de 18 %.',
-    short: 'STABILITÉ',
+    description: 'RÃ©duisez les dÃ©gÃ¢ts subis de 15 % (plafond 68 %).',
+    short: 'STABILITÃ‰',
     color: '#72d8ff',
     max: 4,
     icon: '<path d="M32 6v52M8 18l48 28M56 18 8 46M8 32h48"/><circle cx="32" cy="32" r="24"/><circle cx="32" cy="32" r="10"/>'
   },
+
+  // --- Ranger --------------------------------------------------------------
+  damage: {
+    classId: 'ranger',
+    name: 'Canon amplifiÃ©',
+    description: '+13 % de dÃ©gÃ¢ts de base par niveau.',
+    short: 'PUISSANCE',
+    color: '#ff6b2c',
+    max: 6,
+    icon: '<path d="M9 35h27l14-9v-9L36 26H9l-5-8 5-8 5 8Zm8 0v13m8-13v13m-16-18 5 5 7-9"/><circle cx="46" cy="21" r="4"/>'
+  },
+  fireRate: {
+    classId: 'ranger',
+    name: 'GÃ¢che rapide',
+    description: '+11 % de cadence de base par niveau.',
+    short: 'CADENCE',
+    color: '#00f5ff',
+    max: 6,
+    icon: '<path d="M36 7 17 29h13l-5 19 22-27H33l3-14Z"/><path d="M8 13h8M6 21h7M8 29h8M49 48h7M48 40h6"/>'
+  },
+  magazine: {
+    classId: 'ranger',
+    name: 'Chargeur Ã©tendu',
+    description: '+8 munitions par niveau.',
+    short: 'CAPACITÃ‰',
+    color: '#62ff9a',
+    max: 6,
+    icon: '<path d="M12 15h40v34H12zM20 22h24v20H20zM24 8h16v7M32 27v10m-5-5h10"/>'
+  },
+  reload: {
+    classId: 'ranger',
+    name: 'Recharge accÃ©lÃ©rÃ©e',
+    description: '-11 % de temps de recharge par niveau.',
+    short: 'RECHARGE',
+    color: '#9b78ff',
+    max: 5,
+    icon: '<path d="M50 24A18 18 0 1 0 48 39M50 11v15H35M23 31h15M30.5 23.5v15"/>'
+  },
+  pierce: {
+    classId: 'ranger',
+    name: 'Rayons perforants',
+    description: 'Touchez un hostile supplÃ©mentaire par niveau.',
+    short: 'PERFORATION',
+    color: '#f6e45c',
+    max: 3,
+    icon: '<path d="m8 32 17-17 8 8L16 40l-8-8Z"/><path d="m25 15 8-8 8 8-8 8M34 39l8-8 12 12-8 8-12-12Z"/><path d="m45 12 10-5M41 18l12 2"/>'
+  },
+  repair: {
+    classId: 'ranger',
+    name: 'Nanites rÃ©parateurs',
+    description: 'RÃ©cupÃ©rez +1,2 PV par seconde et par niveau.',
+    short: 'RÃ‰GÃ‰NÃ‰RATION',
+    color: '#ff77c8',
+    max: 6,
+    icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M20 28h8l3-6 4 13 3-7h8"/>'
+  },
+  focus: {
+    classId: 'ranger',
+    name: 'Optique de prÃ©cision',
+    description: '+0,35x sur les dÃ©gÃ¢ts de tÃªte par niveau.',
+    short: 'PRÃ‰CISION',
+    color: '#ffd166',
+    max: 4,
+    icon: '<circle cx="32" cy="32" r="18"/><circle cx="32" cy="32" r="9"/><path d="M32 4v9M32 51v9M4 32h9M51 32h9M12 12l7 7M45 45l7 7M52 12l-7 7M19 45l-7 7"/>'
+  },
+
+  // --- Assassin ------------------------------------------------------------
   shadowDamage: {
-    name: 'Lames affûtées',
-    description: '+22 % de dégâts par frappe.',
+    classId: 'assassin',
+    name: 'Lames affÃ»tÃ©es',
+    description: '+13 % de dÃ©gÃ¢ts de frappe par niveau.',
     short: 'LAMES',
     color: '#b17cff',
-    max: 5,
-    assassinOnly: true,
+    max: 6,
     icon: '<path d="m8 54 8-5 30-30-5-5-30 30-3 10Z"/><path d="m40 15 9-9 9 9-9 9M10 49l10 5M47 46l9 9"/><path d="m18 25 9 9"/>'
   },
   shadowFlurry: {
-    name: 'Tempête jumelle',
-    description: '+18 % de vitesse de frappe.',
+    classId: 'assassin',
+    name: 'TempÃªte jumelle',
+    description: '+11 % de cadence de frappe par niveau.',
     short: 'FRAPPE',
     color: '#e0a6ff',
-    max: 4,
-    assassinOnly: true,
+    max: 6,
     icon: '<path d="M12 38 42 8M19 47 49 17M8 27l18 18M37 56l18-18"/><path d="m8 53 8-3 27-27-5-5-27 27-3 8Z"/>'
   },
   shadowVeil: {
-    name: 'Voile d’ombre',
-    description: '-18 % de recharge du dash.',
+    classId: 'assassin',
+    name: 'Voile dâ€™ombre',
+    description: '-9 % de recharge du dash et +0,05 s dâ€™invulnÃ©rabilitÃ© par niveau.',
     short: 'DASH',
     color: '#7c6bff',
     max: 4,
-    assassinOnly: true,
     icon: '<path d="M32 7 18 25l14 7-14 7 14 7-14 7 14 7 14-7-14-7 14-7-14-7 14-7-14-7Z"/><path d="M9 15 3 9M55 15l6-6M9 49l-6 6M55 49l6 6"/>'
   },
   shadowBlood: {
-    name: 'Sang d’Ombre',
-    description: 'Récupérez 5 PV par élimination.',
+    classId: 'assassin',
+    name: 'Sang dâ€™Ombre',
+    description: 'RÃ©cupÃ©rez 5 PV par Ã©limination et par niveau.',
     short: 'SANG',
     color: '#ff4d83',
     max: 4,
-    assassinOnly: true,
     icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M21 29h8l3-6 4 13 3-7h8"/>'
   },
   shadowExecution: {
+    classId: 'assassin',
     name: 'Sentence',
-    description: '+35 % de dégâts contre les hostiles sous 30 % PV.',
-    short: 'EXÉCUTION',
+    description: '+35 % de dÃ©gÃ¢ts contre les hostiles sous 30 % PV, par niveau.',
+    short: 'EXÃ‰CUTION',
     color: '#ff3158',
-    max: 3,
-    assassinOnly: true,
+    max: 4,
     icon: '<circle cx="32" cy="32" r="22"/><circle cx="32" cy="32" r="11"/><path d="M32 4v12M32 48v12M4 32h12M48 32h12M12 12l9 9M43 43l9 9M52 12l-9 9M21 43l-9 9"/><path d="m27 32 4 4 8-9"/>'
+  },
+  shadowReach: {
+    classId: 'assassin',
+    name: 'Allonge',
+    description: '+0,35 m de portÃ©e et +0,06 dâ€™arc de frappe par niveau.',
+    short: 'ALLONGE',
+    color: '#9f7bff',
+    max: 4,
+    icon: '<path d="M6 54l6-3 30-30-4-4-30 30-2 7Z"/><path d="M12 44 44 12M40 6l14 14M46 20l14 14"/><circle cx="52" cy="50" r="6"/>'
+  },
+  shadowPoise: {
+    classId: 'assassin',
+    name: 'Garde dâ€™ombre',
+    description: '+18 PV maximum et +0,5 PV rÃ©gÃ©nÃ©rÃ©s par seconde, par niveau.',
+    short: 'GARDE',
+    color: '#8affd6',
+    max: 4,
+    icon: '<path d="M32 6l20 8v14c0 12-8 22-20 27-12-5-20-15-20-27V14Z"/><path d="M32 20v26M21 27l11 7 11-7M21 41l11-6 11 6"/>'
   }
 };
 
-// Armes permanentes disponibles dans l'atelier.
+// Armes permanentes, disponibles dans l'atelier.
+//
+// Les armes sont EXCLUSIVES a une classe : le Ranger n'a que des armes a
+// distance, l'Assassin que des sabres et un lancer. Chaque arme porte un
+// fireMode : 'ray' utilise le raycast existant, 'slash' la frappe melee.
+// Une arme 'slash' est entierement decrite par ses parametres (portee, arc,
+// nombre de cibles, multiplicateur), donc ajouter une arme melee ne demande
+// aucun nouveau code de combat.
+//
+// Le DPS brut est volontairement croissant avec le prix : avant, PLASMA
+// (1500 CR) etait 5 fois moins efficace que SCATTER (450 CR), ce qui
+// inversait completement la valeur de l'atelier.
 const WEAPON_DEFINITIONS = {
   pulse: {
     id: 'pulse',
+    classId: 'ranger',
+    fireMode: 'ray',
     name: 'AR-9 // PULSE',
     short: 'PULSE',
-    description: 'Arme de départ équilibrée, précise et fiable.',
+    description: 'Fiable et sans dÃ©faut. Le point de dÃ©part de tout opÃ©rateur.',
     price: 0,
-    damage: CONFIG.baseDamage,
-    fireRate: CONFIG.baseFireRate,
-    magazine: CONFIG.baseMagazine,
-    reload: CONFIG.baseReload,
+    damage: 28,
+    fireRate: 5.4,
+    magazine: 30,
+    reload: 1.45,
     pellets: 1,
     spread: 0,
     pierce: 0,
-    range: CONFIG.interactionRange,
-    accuracy: 100,
-    headshotMultiplier: 1.65,
-    special: 'ÉQUILIBRÉ',
+    range: 70,
+    headshotMultiplier: 1.7,
+    special: 'Ã‰QUILIBRÃ‰',
     color: '#00f5ff',
     energyColor: 0x00f5ff,
     accentColor: 0xff4d22,
@@ -485,19 +587,20 @@ const WEAPON_DEFINITIONS = {
   },
   scatter: {
     id: 'scatter',
+    classId: 'ranger',
+    fireMode: 'ray',
     name: 'SCATTER-7 // BREACH',
     short: 'SCATTER',
-    description: '7 projectiles dispersés pour nettoyer les groupes.',
+    description: 'Sept projectiles dispersÃ©s. Sans effet sur un Alpha, redoutable sur un groupe.',
     price: 450,
-    damage: 16,
-    fireRate: 1.65,
-    magazine: 7,
+    damage: 19,
+    fireRate: 1.7,
+    magazine: 8,
     reload: 1.9,
     pellets: 7,
     spread: 0.075,
     pierce: 0,
-    range: 38,
-    accuracy: 62,
+    range: 34,
     headshotMultiplier: 1.5,
     special: 'MULTI-CIBLES',
     color: '#ff6b2c',
@@ -509,20 +612,21 @@ const WEAPON_DEFINITIONS = {
   },
   smg: {
     id: 'smg',
+    classId: 'ranger',
+    fireMode: 'ray',
     name: 'NOVA-12 // SWARM',
     short: 'NOVA',
-    description: 'Cadence élevée et chargeur generous pour garder la pression.',
+    description: 'Cadence Ã©levÃ©e et gros chargeur. Tient la pression quand Ã§a arrive de tous les cÃ´tÃ©s.',
     price: 650,
-    damage: 10,
+    damage: 16,
     fireRate: 13,
-    magazine: 42,
+    magazine: 48,
     reload: 1.55,
     pellets: 1,
     spread: 0.025,
     pierce: 0,
     range: 55,
-    accuracy: 88,
-    headshotMultiplier: 1.4,
+    headshotMultiplier: 1.45,
     special: 'CADENCE',
     color: '#62ff9a',
     energyColor: 0x62ff9a,
@@ -531,21 +635,74 @@ const WEAPON_DEFINITIONS = {
     visualScale: 0.9,
     icon: '<path d="M10 29h29l12-7v-6l-12 7H10L6 16l4-7 5 7v13Z"/><path d="M17 25v14M25 25v14M33 25v14M45 18h10M44 26h9M18 39h9l5 9h-9Z"/>'
   },
+  vector: {
+    id: 'vector',
+    classId: 'ranger',
+    fireMode: 'ray',
+    name: 'VECTOR-6 // HEADHUNTER',
+    short: 'VECTOR',
+    description: 'Revolver de prÃ©cision. Faible cadence, mais Ã—2,6 sur la tÃªte : la rÃ©ponse aux Ã©lites.',
+    price: 800,
+    damage: 98,
+    fireRate: 1.85,
+    magazine: 6,
+    reload: 1.6,
+    pellets: 1,
+    spread: 0.003,
+    pierce: 0,
+    range: 90,
+    headshotMultiplier: 2.6,
+    special: 'HEADSHOT',
+    color: '#ffcf4a',
+    energyColor: 0xffcf4a,
+    accentColor: 0xff3158,
+    tracerColor: 0xfff0a6,
+    visualScale: 0.96,
+    icon: '<path d="M10 28h31l9-6v-6l-9 6H10L6 15l4-7 5 7v13Z"/><path d="M18 25v14M25 25v14M33 25v14M19 39h9l5 9h-9Z"/><circle cx="45" cy="18" r="3"/>'
+  },
+  cryo: {
+    id: 'cryo',
+    classId: 'ranger',
+    fireMode: 'ray',
+    name: 'FROST-3 // CRYO',
+    short: 'CRYO',
+    description: 'Le froid ralentit de 55 %. Faible dÃ©gÃ¢ts, mais il achÃ¨te du temps.',
+    price: 900,
+    damage: 25,
+    fireRate: 4.3,
+    magazine: 20,
+    reload: 1.8,
+    pellets: 2,
+    spread: 0.025,
+    pierce: 0,
+    range: 60,
+    headshotMultiplier: 1.5,
+    slowMultiplier: 0.45,
+    slowDuration: 2.4,
+    special: 'RALENTIT',
+    color: '#72d8ff',
+    energyColor: 0x72d8ff,
+    accentColor: 0xb17cff,
+    tracerColor: 0xc9f5ff,
+    visualScale: 1,
+    icon: '<path d="M32 6v52M8 18l48 28M56 18 8 46M8 32h48"/><circle cx="32" cy="32" r="24"/><path d="m25 25 14 14M39 25 25 39"/>'
+  },
   rail: {
     id: 'rail',
+    classId: 'ranger',
+    fireMode: 'ray',
     name: 'LANCE-01 // RAIL',
     short: 'RAIL',
-    description: 'Tir lent et dévastateur qui traverse plusieurs hostiles.',
+    description: 'Transperce trois hostiles alignÃ©s. La rÃ©ponse aux vagues dâ€™Ã©lites.',
     price: 950,
-    damage: 125,
-    fireRate: 0.95,
-    magazine: 4,
+    damage: 132,
+    fireRate: 1,
+    magazine: 5,
     reload: 2.15,
     pellets: 1,
     spread: 0,
     pierce: 2,
     range: 110,
-    accuracy: 100,
     headshotMultiplier: 2.1,
     special: 'PERFORATION',
     color: '#b17cff',
@@ -555,49 +712,26 @@ const WEAPON_DEFINITIONS = {
     visualScale: 1.12,
     icon: '<path d="M7 32h39l11-7v-6l-11 7H7l-4-7 4-7Z"/><path d="M17 25v14M25 25v14M33 25v14M46 15h11M47 49h10"/><circle cx="51" cy="32" r="4"/>'
   },
-  vector: {
-    id: 'vector',
-    name: 'VECTOR-6 // HEADHUNTER',
-    short: 'VECTOR',
-    description: 'Revolver de précision avec un bonus de dégâts headshot.',
-    price: 800,
-    damage: 72,
-    fireRate: 1.8,
-    magazine: 6,
-    reload: 1.65,
-    pellets: 1,
-    spread: 0.003,
-    pierce: 0,
-    range: 90,
-    accuracy: 99,
-    headshotMultiplier: 2.5,
-    special: 'HEADSHOT',
-    color: '#ffcf4a',
-    energyColor: 0xffcf4a,
-    accentColor: 0xff3158,
-    tracerColor: 0xfff0a6,
-    visualScale: 0.96,
-    icon: '<path d="M10 28h31l9-6v-6l-9 6H10L6 15l4-7 5 7v13Z"/><path d="M18 25v14M25 25v14M33 25v14M19 39h9l5 9h-9Z"/><circle cx="45" cy="18" r="3"/>'
-  },
   inferno: {
     id: 'inferno',
+    classId: 'ranger',
+    fireMode: 'ray',
     name: 'PYRO-4 // INFERNO',
     short: 'INFERNO',
-    description: 'Flammèche rapprochée qui laisse les ennemis brûler.',
-    price: 1200,
-    damage: 5,
+    description: 'FlammÃ¨che de contact. PortÃ©e courte, mais tout ce quâ€™elle touche brÃ»le.',
+    price: 1100,
+    damage: 6,
     fireRate: 18,
-    magazine: 80,
+    magazine: 90,
     reload: 2.4,
     pellets: 3,
     spread: 0.11,
     pierce: 0,
-    range: 22,
-    accuracy: 55,
+    range: 24,
     headshotMultiplier: 1.3,
-    burnDamage: 4,
+    burnDamage: 6,
     burnDuration: 2.5,
-    special: 'BRÛLURE',
+    special: 'BRÃ›LURE',
     color: '#ff6b2c',
     energyColor: 0xff6b2c,
     accentColor: 0xffd166,
@@ -605,50 +739,25 @@ const WEAPON_DEFINITIONS = {
     visualScale: 0.94,
     icon: '<path d="M12 45c-5-8 2-13 2-21 6 5 7 9 4 14 7-4 8-11 5-18 12 8 17 18 11 27-4 6-11 8-17 5Z"/><path d="M32 10c7 10 8 18 3 26-3 4-8 5-12 2 5-2 7-6 5-11 5 3 7 7 6 12"/>'
   },
-  cryo: {
-    id: 'cryo',
-    name: 'FROST-3 // CRYO',
-    short: 'CRYO',
-    description: 'Projectiles glaciers qui ralentissent les hostiles.',
-    price: 1000,
-    damage: 14,
-    fireRate: 4.2,
-    magazine: 18,
-    reload: 1.8,
-    pellets: 2,
-    spread: 0.025,
-    pierce: 0,
-    range: 60,
-    accuracy: 90,
-    headshotMultiplier: 1.5,
-    slowMultiplier: 0.45,
-    slowDuration: 2.2,
-    special: 'RALENTIT',
-    color: '#72d8ff',
-    energyColor: 0x72d8ff,
-    accentColor: 0xb17cff,
-    tracerColor: 0xc9f5ff,
-    visualScale: 1,
-    icon: '<path d="M32 6v52M8 18l48 28M56 18 8 46M8 32h48"/><circle cx="32" cy="32" r="24"/><path d="m25 25 14 14M39 25 25 39"/>'
-  },
   plasma: {
     id: 'plasma',
+    classId: 'ranger',
+    fireMode: 'ray',
     name: 'ARC-9 // PLASMA',
     short: 'PLASMA',
-    description: 'Boules de plasma qui explosent à l’impact.',
-    price: 1500,
-    damage: 55,
-    fireRate: 2.2,
-    magazine: 12,
+    description: 'Boules Ã  fusion. Lâ€™explosion touche tout ce qui est autour du point dâ€™impact.',
+    price: 1400,
+    damage: 92,
+    fireRate: 2.3,
+    magazine: 14,
     reload: 2,
     pellets: 1,
     spread: 0.01,
     pierce: 0,
     range: 75,
-    accuracy: 95,
     headshotMultiplier: 1.7,
-    explosionRadius: 3.8,
-    explosionDamage: 42,
+    explosionRadius: 4.2,
+    explosionDamage: 60,
     special: 'EXPLOSION',
     color: '#ff77c8',
     energyColor: 0xff77c8,
@@ -656,35 +765,164 @@ const WEAPON_DEFINITIONS = {
     tracerColor: 0xffb4e2,
     visualScale: 1.05,
     icon: '<circle cx="32" cy="32" r="10"/><path d="M32 6v10M32 48v10M6 32h10M48 32h10M13 13l8 8M43 43l8 8M51 13l-8 8M21 43l-8 8"/><path d="m26 32 6-10 6 10-6 10Z"/>'
+  },
+
+  // --- Armurerie de l'Assassin -------------------------------------------
+  twinSabers: {
+    id: 'twinSabers',
+    classId: 'assassin',
+    fireMode: 'slash',
+    name: 'LAMES // JUMELLES',
+    short: 'JUMELLES',
+    description: 'Deux sabres, deux cibles. Lâ€™arme de base de lâ€™Assassin.',
+    price: 0,
+    damage: 48,
+    fireRate: 2.7,
+    slashTargets: 2,
+    slashArc: 0.34,
+    slashRange: 3.9,
+    slashVisual: 1.35,
+    range: 3.9,
+    special: 'DEUX CIBLES',
+    color: '#b17cff',
+    energyColor: 0xb17cff,
+    accentColor: 0x6a3cff,
+    tracerColor: 0xd9c2ff,
+    visualScale: 1,
+    icon: '<path d="m8 54 8-5 30-30-5-5-30 30-3 10Z"/><path d="m40 15 9-9 9 9-9 9M10 49l10 5M47 46l9 9"/><path d="m18 25 9 9"/>'
+  },
+  heavySaber: {
+    id: 'heavySaber',
+    classId: 'assassin',
+    fireMode: 'slash',
+    name: 'LAME // SPATULE',
+    short: 'SPATULE',
+    description: 'Une seule cible, mais un coup qui arrache. Arc large pour les groups serrÃ©s.',
+    price: 700,
+    damage: 108,
+    fireRate: 1.85,
+    slashTargets: 1,
+    slashArc: 0.15,
+    slashRange: 4.4,
+    slashVisual: 1.9,
+    range: 4.4,
+    special: 'FRAPPE LOURDE',
+    color: '#ff3158',
+    energyColor: 0xff3158,
+    accentColor: 0xffa06a,
+    tracerColor: 0xffb0bd,
+    visualScale: 1.18,
+    icon: '<path d="M10 54 4 46l30-32 10 10-32 32Z"/><path d="m40 12 12 12M8 46l10 10M20 40l6 6"/><path d="M46 14a8 8 0 1 1 12 12"/>'
+  },
+  twinFang: {
+    id: 'twinFang',
+    classId: 'assassin',
+    fireMode: 'slash',
+    name: 'CROCS // JUMELS',
+    short: 'CROCS',
+    description: 'Trois cibles, enchaÃ®nement rapide. Faible par coup, imbattable dans la masse.',
+    price: 850,
+    damage: 35,
+    fireRate: 3.5,
+    slashTargets: 3,
+    slashArc: 0.5,
+    slashRange: 3.6,
+    slashVisual: 1.2,
+    range: 3.6,
+    special: 'TROIS CIBLES',
+    color: '#ff77c8',
+    energyColor: 0xff77c8,
+    accentColor: 0xb17cff,
+    tracerColor: 0xffc4e6,
+    visualScale: 0.94,
+    icon: '<path d="m6 52 7-4 24-24-4-4-24 24-3 8Z"/><path d="m32 22 6-6 6 6-6 6M38 32l6-6 6 6-6 6M26 36l6-6 6 6-6 6M9 47l8 4"/>'
+  },
+  shuriken: {
+    id: 'shuriken',
+    classId: 'assassin',
+    fireMode: 'ray',
+    name: 'SHURIKEN // VOLANT',
+    short: 'SHURIKEN',
+    description: 'Lancer Ã  la main. PortÃ©e courte, mais on garde la mobilitÃ© du dash.',
+    price: 1100,
+    damage: 29,
+    fireRate: 9,
+    magazine: 15,
+    reload: 1.1,
+    pellets: 1,
+    spread: 0.018,
+    pierce: 0,
+    range: 46,
+    headshotMultiplier: 1.8,
+    special: 'LANCER',
+    color: '#c9a6ff',
+    energyColor: 0xc9a6ff,
+    accentColor: 0x5ca8ff,
+    tracerColor: 0xe6d8ff,
+    visualScale: 0.9,
+    icon: '<path d="M32 6 40 24l18 8-18 8-8 18-8-18-18-8 18-8Z"/><circle cx="32" cy="32" r="5"/><path d="M12 12l8 8M52 12l-8 8M12 52l8-8M52 52l-8-8"/>'
+  },
+  shadowStep: {
+    id: 'shadowStep',
+    classId: 'assassin',
+    fireMode: 'slash',
+    name: 'PAS // Dâ€™OMBRE',
+    short: 'PAS OMBRE',
+    description: 'Frappe qui voyage avec le dash : chaque esquive traverse ce qui traÃ®ne derriÃ¨re.',
+    price: 1500,
+    damage: 76,
+    fireRate: 2.4,
+    slashTargets: 2,
+    slashArc: 0.28,
+    slashRange: 4.2,
+    slashVisual: 1.5,
+    dashDamage: 88,
+    range: 4.2,
+    special: 'FRAPPE-DASH',
+    color: '#7c6bff',
+    energyColor: 0x7c6bff,
+    accentColor: 0x00f5ff,
+    tracerColor: 0xc2d0ff,
+    visualScale: 1.05,
+    icon: '<path d="M32 7 18 25l14 7-14 7 14 7-14 7 14 7 14-7-14-7 14-7-14-7 14-7-14-7Z"/><path d="m10 50 6-3 20-20-4-4-20 20-2 7Z"/><path d="M9 15 3 9M55 15l6-6M9 49l-6 6"/>'
   }
 };
 
-// Capacités actives achetées dans l'atelier et déclenchées avec la touche Espace.
+// Capacites actives achetees dans l'atelier et declenchees avec Espace.
+// Elles sont exclusives a une classe : le Ranger controle l'espace, l'Assassin
+// controle le corps.
+//
+// NOVA et AEGIS etaient du contenu mort dans l'equilibrage precedent :
+// NOVA rapportait 7,5 DPS pour 500 CR, et AEGIS devenait inutile des que la
+// reduction de degats de l'upgrade Stabilisateurs depassait 65 %.
 const ABILITY_DEFINITIONS = {
+  // --- Ranger --------------------------------------------------------------
   nova: {
     id: 'nova',
+    classId: 'ranger',
     name: 'NOVA PULSE',
     short: 'NOVA',
-    description: 'Détonation de zone qui touche tous les hostiles autour de toi.',
+    description: 'DÃ©tonation de zone. Touche tout le monde autour de toi, allies compris le dash de lâ€™Assassin.',
     price: 500,
-    cooldown: 12,
+    cooldown: 11,
     duration: 0,
-    radius: 10,
-    damage: 90,
-    effect: 'DÉGÂTS DE ZONE',
+    radius: 11,
+    damage: 150,
+    effect: 'DÃ‰GÃ‚TS DE ZONE',
     color: '#ffcf4a',
     icon: '<circle cx="32" cy="32" r="9"/><circle cx="32" cy="32" r="23"/><path d="M32 4v12M32 48v12M4 32h12M48 32h12M12 12l9 9M43 43l9 9M52 12l-9 9M21 43l-9 9"/>'
   },
   cryo: {
     id: 'cryo',
+    classId: 'ranger',
     name: 'CRYO FIELD',
     short: 'CRYO',
-    description: 'Gèle la zone et ralentit fortement les ennemis qui s’y trouvent.',
+    description: 'GÃ¨le la zone : les ennemis qui sâ€™y trouvent sont ralentis de 70 % pendant 4 secondes.',
     price: 650,
     cooldown: 16,
     duration: 4,
-    radius: 14,
-    slowMultiplier: 0.25,
+    radius: 15,
+    slowMultiplier: 0.3,
     slowDuration: 4,
     effect: 'RALENTISSEMENT',
     color: '#72d8ff',
@@ -692,22 +930,26 @@ const ABILITY_DEFINITIONS = {
   },
   aegis: {
     id: 'aegis',
+    classId: 'ranger',
     name: 'AEGIS SHIELD',
     short: 'AEGIS',
-    description: 'Déploiement temporaire qui absorbe une grande partie des dégâts.',
+    description: 'Bouclier dâ€™Ã©nergie : -45 % de dÃ©gÃ¢ts subis pendant 5 secondes.',
     price: 800,
-    cooldown: 20,
-    duration: 6,
-    damageReduction: 0.65,
+    cooldown: 18,
+    duration: 5,
+    // Ne peut pas depasser le plafond de reduction totale, sinon l'upgrade
+    // Stabilisateur devenait inutile a partir du 3e niveau.
+    damageReduction: 0.45,
     effect: 'PROTECTION',
     color: '#5ca8ff',
     icon: '<path d="M32 7 52 16v15c0 13-9 24-20 29C21 55 12 44 12 31V16L32 7Z"/><path d="M32 18v29M20 25l12 8 12-8M20 40l12-7 12 7"/>'
   },
   overload: {
     id: 'overload',
+    classId: 'ranger',
     name: 'OVERLOAD CORE',
     short: 'OVERDRIVE',
-    description: 'Surcharge l’arme : dégâts et cadence augmentés pendant 7 secondes.',
+    description: 'Surcharge lâ€™arme : +50 % de dÃ©gÃ¢ts et +60 % de cadence pendant 7 secondes.',
     price: 1000,
     cooldown: 24,
     duration: 7,
@@ -716,98 +958,176 @@ const ABILITY_DEFINITIONS = {
     effect: 'SURCHARGE',
     color: '#ff77c8',
     icon: '<path d="m36 7-19 22h13l-5 19 22-27H33l3-14Z"/><path d="M8 13h8M6 21h7M8 29h8M49 48h7M48 40h6"/>'
+  },
+
+  // --- Assassin ------------------------------------------------------------
+  shadowStep: {
+    id: 'shadowStep',
+    classId: 'assassin',
+    name: 'PAS OMBRE',
+    short: 'PAS OMBRE',
+    description: 'Reset immÃ©diat du dash et +50 % de dÃ©gÃ¢ts de frappe pendant 6 secondes.',
+    price: 500,
+    cooldown: 12,
+    duration: 6,
+    damageMultiplier: 1.5,
+    resetDash: true,
+    effect: 'RUPTURE',
+    color: '#7c6bff',
+    icon: '<path d="M32 7 18 25l14 7-14 7 14 7-14 7 14 7 14-7-14-7 14-7-14-7 14-7-14-7Z"/><path d="M9 15 3 9M55 15l6-6M9 49l-6 6M55 49l6 6"/>'
+  },
+  shadowVeilField: {
+    id: 'shadowVeilField',
+    classId: 'assassin',
+    name: 'VOILE SOMBRE',
+    short: 'VOILE',
+    description: 'Invisible 1,5 s. La premiÃ¨re frappe qui suit est un headshot garanti, quelle que soit la distance.',
+    price: 750,
+    cooldown: 16,
+    duration: 1.5,
+    vanish: true,
+    guaranteedCrit: true,
+    effect: 'INVISIBILITÃ‰',
+    color: '#b17cff',
+    icon: '<path d="M32 6c9 0 15 7 15 16 0 10-7 20-15 30-8-10-15-20-15-30 0-9 6-16 15-16Z"/><path d="M6 20l8 4M58 20l-8 4M6 44l8-4M58 44l-8-4"/>'
+  },
+  shadowRiptide: {
+    id: 'shadowRiptide',
+    classId: 'assassin',
+    name: 'SANG-DÃ‰CHIRÃ‰',
+    short: 'SANG',
+    description: 'Vampirie : +45 % de dÃ©gÃ¢ts et 6 PV rÃ©cupÃ©rÃ©s par Ã©limination, pendant 8 secondes.',
+    price: 900,
+    cooldown: 20,
+    duration: 8,
+    damageMultiplier: 1.45,
+    killHeal: 6,
+    effect: 'VAMPIRE',
+    color: '#ff4d83',
+    icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M21 29h8l3-6 4 13 3-7h8"/>'
+  },
+  shadowHourglass: {
+    id: 'shadowHourglass',
+    classId: 'assassin',
+    name: 'HEURE DE CENDRE',
+    short: 'CENDRES',
+    description: 'Ralentit de 55 % tous les ennemis pendant 6 s et inflige 90 dÃ©gÃ¢ts Ã  l healthiest de la zone.',
+    price: 1200,
+    cooldown: 26,
+    duration: 6,
+    radius: 18,
+    slowMultiplier: 0.45,
+    damage: 90,
+    effect: 'RALENTI + DÃ‰GÃ‚TS',
+    color: '#c9a6ff',
+    icon: '<path d="M16 6h32M16 58h32M18 6c0 14 14 16 14 26S18 44 18 58M46 6c0 14-14 16-14 26s14 12 14 26"/><path d="M22 50h20"/>'
   }
 };
 
-// Équipements permanents achetés avec les crédits gagnés à la mort.
+// Ã‰quipements permanents achetÃ©s avec les crÃ©dits gagnÃ©s Ã  la mort.
+//
+// Volontairement sobres. Les crÃ©dits sont gagnÃ©s Ã  chaque mort, donc un
+// joueur qui meurt beaucoup les empile : des bonus trop forts rendent le jeu
+// trivial aprÃ¨s quelques parties. Le plafond total de l'atelier est de
+// +40 % de dÃ©gÃ¢ts, +35 % de cadence, +90 PV et 16 % de rÃ©duction, ce qui
+// reste en dessous des amÃ©liorations de vague (jusqu'Ã  +78 % de dÃ©gÃ¢ts).
+// Le champ classId rend chaque Ã©quipement exclusif Ã  une classe.
 const META_EQUIPMENT = [
   {
     id: 'reinforcedCore',
-    name: 'Noyau blindé',
+    classId: 'shared',
+    name: 'Noyau blindÃ©',
     short: 'BLINDAGE',
     description: '+18 PV maximum par niveau.',
     color: '#5ca8ff',
     maxLevel: 5,
-    baseCost: 180,
+    baseCost: 220,
     costGrowth: 1.5,
     icon: '<path d="M32 7 52 16v15c0 13-9 24-20 29C21 55 12 44 12 31V16L32 7Z"/><path d="M32 18v29M20 25l12 8 12-8M20 40l12-7 12 7"/>'
   },
   {
+    id: 'neuralShield',
+    classId: 'shared',
+    name: 'RÃ©seau neural',
+    short: 'STABILITÃ‰',
+    description: '-4 % de dÃ©gÃ¢ts subis par niveau.',
+    color: '#72d8ff',
+    maxLevel: 4,
+    baseCost: 320,
+    costGrowth: 1.6,
+    icon: '<path d="M32 6v52M8 18l48 28M56 18 8 46M8 32h48"/><circle cx="32" cy="32" r="24"/><circle cx="32" cy="32" r="10"/>'
+  },
+  {
     id: 'pulseCoil',
+    classId: 'ranger',
     name: 'Bobine pulsante',
     short: 'DOMMAGE',
-    description: '+10 % de dégâts par niveau.',
+    description: '+8 % de dÃ©gÃ¢ts par niveau.',
     color: '#ff6b2c',
     maxLevel: 5,
-    baseCost: 230,
+    baseCost: 280,
     costGrowth: 1.55,
     icon: '<path d="M36 7 17 29h13l-5 19 22-27H33l3-14Z"/><path d="M8 13h8M6 21h7M8 29h8M49 48h7M48 40h6"/>'
   },
   {
     id: 'overclock',
-    name: 'Déclencheur surcadencé',
+    classId: 'ranger',
+    name: 'DÃ©clencheur surcadencÃ©',
     short: 'CADENCE',
-    description: '+9 % de vitesse de tir par niveau.',
+    description: '+7 % de cadence par niveau.',
     color: '#00f5ff',
     maxLevel: 5,
-    baseCost: 210,
+    baseCost: 260,
     costGrowth: 1.5,
     icon: '<circle cx="32" cy="32" r="20"/><path d="M32 7v10M32 47v10M7 32h10M47 32h10M14 14l7 7M43 43l7 7M50 14l-7 7M21 43l-7 7"/><circle cx="32" cy="32" r="5"/>'
   },
   {
     id: 'tacticalMagazine',
+    classId: 'ranger',
     name: 'Chargeur tactique',
     short: 'MUNITIONS',
-    description: '+6 munitions par niveau.',
+    description: '+5 munitions par niveau.',
     color: '#62ff9a',
     maxLevel: 5,
-    baseCost: 160,
+    baseCost: 200,
     costGrowth: 1.45,
     icon: '<path d="M12 15h40v34H12zM20 22h24v20H20zM24 8h16v7M32 27v10m-5-5h10"/>'
   },
   {
-    id: 'neuralShield',
-    name: 'Réseau neural',
-    short: 'STABILITÉ',
-    description: '-4 % de dégâts subis par niveau.',
-    color: '#72d8ff',
-    maxLevel: 4,
+    id: 'bladeEdge',
+    classId: 'assassin',
+    name: 'Fil des lames',
+    short: 'TRANCHE',
+    description: '+9 % de dÃ©gÃ¢ts de frappe par niveau.',
+    color: '#b17cff',
+    maxLevel: 5,
     baseCost: 280,
-    costGrowth: 1.6,
-    icon: '<path d="M32 6v52M8 18l48 28M56 18 8 46M8 32h48"/><circle cx="32" cy="32" r="24"/><circle cx="32" cy="32" r="10"/>'
+    costGrowth: 1.55,
+    icon: '<path d="m8 54 8-5 30-30-5-5-30 30-3 10Z"/><path d="m40 15 9-9 9 9-9 9M10 49l10 5M47 46l9 9"/><path d="m18 25 9 9"/>'
   },
   {
-    id: 'servoMotors',
-    name: 'Servomoteurs',
-    short: 'MOBILITÉ',
-    description: '+6 % de vitesse de déplacement par niveau.',
-    color: '#22e6a8',
-    maxLevel: 4,
-    baseCost: 190,
+    id: 'tendonSurge',
+    classId: 'assassin',
+    name: 'Tendon synthÃ©tiques',
+    short: 'REFLEXE',
+    description: '+8 % de cadence de frappe par niveau.',
+    color: '#8affd6',
+    maxLevel: 5,
+    baseCost: 260,
     costGrowth: 1.5,
     icon: '<path d="M31 6 18 34h12l-4 25 19-35H33l5-18Z"/><path d="M9 14h12M7 24h10M9 34h12M47 49h9"/>'
   },
   {
-    id: 'naniteCore',
-    name: 'Nanites de terrain',
-    short: 'RÉGÉNÉRATION',
-    description: '+0,3 PV régénérés par seconde et par niveau.',
-    color: '#ff77c8',
+    id: 'bloodPact',
+    classId: 'assassin',
+    name: 'Pacte de sang',
+    short: 'SAIGNÃ‰E',
+    description: '+2 PV rÃ©cupÃ©rÃ©s par Ã©limination, par niveau.',
+    color: '#ff4d83',
     maxLevel: 4,
-    baseCost: 240,
-    costGrowth: 1.55,
-    icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M20 28h8l3-6 4 13 3-7h8"/>'
-  },
-  {
-    id: 'piercingCore',
-    name: 'R munition perforante',
-    short: 'PERFORATION',
-    description: '+1 cible supplémentaire par niveau.',
-    color: '#f6e45c',
-    maxLevel: 2,
-    baseCost: 340,
-    costGrowth: 1.7,
-    icon: '<path d="m8 32 17-17 8 8L16 40l-8-8Z"/><path d="m25 15 8-8 8 8-8 8M34 39l8-8 12 12-8 8-12-12Z"/><path d="m45 12 10-5M41 18l12 2"/>'
+    baseCost: 300,
+    costGrowth: 1.6,
+    icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M21 29h8l3-6 4 13 3-7h8"/>'
   }
 ];
 
@@ -819,6 +1139,10 @@ const player = {
   health: CONFIG.baseHealth,
   maxHealth: CONFIG.baseHealth,
   speed: CONFIG.baseSpeed,
+  // Valeurs de reference : les ameliorations sont additives et partent de
+  // ces bases, elles ne s'appliquent plus les unes sur les autres.
+  baseDamage: CONFIG.baseDamage,
+  baseFireRate: CONFIG.baseFireRate,
   damage: CONFIG.baseDamage,
   fireRate: CONFIG.baseFireRate,
   weaponId: 'pulse',
@@ -829,6 +1153,10 @@ const player = {
   abilityId: '',
   abilityCooldown: 0,
   abilityTimer: 0,
+  abilityDamageBonus: 0,
+  abilityKillHeal: 0,
+  vanishTimer: 0,
+  critPending: false,
   overdriveTimer: 0,
   magazineSize: CONFIG.baseMagazine,
   ammo: CONFIG.baseMagazine,
@@ -898,6 +1226,15 @@ let ownedClasses = readOwnedClasses();
 let equippedClass = readEquippedClass();
 let ownedAbilities = readOwnedAbilities();
 let equippedAbility = readEquippedAbility();
+
+// Reconciliation apres chargement : une sauvegarde d'avant le split par
+// classe peut porter une arme ou une capacite de l'autre classe. On les
+// remplace par les valeurs de depart de la classe plutot que de les laisser
+// trainer, ce qui laisserait l'operateur sans arme utilisable.
+if (WEAPON_DEFINITIONS[equippedWeapon]?.classId !== equippedClass) {
+  equippedWeapon = resolveWeaponForClass(equippedWeapon, equippedClass).id;
+}
+if (ABILITY_DEFINITIONS[equippedAbility]?.classId !== equippedClass) equippedAbility = '';
 let shopReturnState = GAME_STATE.MENU;
 let lastReward = null;
 let runTime = 0;
@@ -922,11 +1259,19 @@ const keys = new Set();
 const enemies = [];
 const enemyTargets = [];
 const arenaTargets = [];
+// Cible de raycast unique : fireWeapon copiait [...arenaTargets,
+// ...enemyTargets] a chaque projectile, soit ~70 elements recopies par tir.
+const raycastTargets = [];
 const obstacles = [];
 const particles = [];
 const slashEffects = [];
 const dashTrails = [];
 const tracers = [];
+// Geometrie de debris partagee : elle etait recreee a chaque impact et a
+// chaque mort (tailles tirees au hasard), ce qui uploadait des buffers GPU
+// sans arret. La taille passe maintenant par l'echelle du mesh.
+const sharedDebrisGeometry = new THREE.TetrahedronGeometry(1, 0);
+const debrisMaterialPool = [];
 const ripples = [];
 const animatedRings = [];
 const spawnPads = [];
@@ -942,6 +1287,11 @@ const NAV_DIRECTIONS = [
   [-1, -1], [1, -1], [-1, 1], [1, 1]
 ];
 let navTimer = 0;
+
+// La shadow map est rafraichie 1 frame sur SHADOW_REFRESH_FRAMES pendant le
+// jeu, et a chaque frame hors jeu (menu anime, arene qui tourne).
+const SHADOW_REFRESH_FRAMES = 3;
+let shadowFrameCounter = 0;
 
 class SoundSystem {
   constructor() {
@@ -1091,7 +1441,7 @@ function writeStorage(key, value) {
   try {
     window.localStorage.setItem(key, value);
   } catch {
-    // La progression reste disponible en mémoire si le stockage est bloqué.
+    // La progression reste disponible en mÃ©moire si le stockage est bloquÃ©.
   }
 }
 
@@ -1121,20 +1471,24 @@ function readOwnedEquipment() {
       }
     });
   } catch {
-    // Un profil corrompu ne doit pas empêcher de jouer.
+    // Un profil corrompu ne doit pas empÃªcher de jouer.
   }
   return equipment;
 }
 
 function readOwnedWeapons() {
-  const owned = { pulse: true };
+  // Les armes de depart (prix 0) sont toujours possedees, pour chaque classe.
+  const owned = {};
+  Object.values(WEAPON_DEFINITIONS).forEach((weapon) => {
+    if (weapon.price === 0) owned[weapon.id] = true;
+  });
   try {
     const saved = JSON.parse(readStorage(STORAGE_KEYS.weapons, '{}'));
     Object.keys(WEAPON_DEFINITIONS).forEach((id) => {
-      if (id === 'pulse' || saved?.[id] === true) owned[id] = true;
+      if (saved?.[id] === true) owned[id] = true;
     });
   } catch {
-    // Un inventaire corrompu conserve au minimum l'arme de départ.
+    // Un inventaire corrompu conserve au minimum les armes de depart.
   }
   return owned;
 }
@@ -1176,7 +1530,7 @@ function readOwnedAbilities() {
       if (saved?.[id] === true) owned[id] = true;
     });
   } catch {
-    // Une sauvegarde invalide laisse simplement le joueur sans capacité.
+    // Une sauvegarde invalide laisse simplement le joueur sans capacitÃ©.
   }
   return owned;
 }
@@ -1223,7 +1577,7 @@ function createProfileBackup() {
 
 function sanitizeImportedProfile(data) {
   if (!data || data.game !== 'Nexus Breach' || data.saveVersion !== 1 || !data.progression) {
-    throw new Error('Ce fichier n’est pas une sauvegarde valide de Nexus Breach.');
+    throw new Error('Ce fichier nâ€™est pas une sauvegarde valide de Nexus Breach.');
   }
 
   const progression = data.progression;
@@ -1313,7 +1667,7 @@ function downloadProfileBackup() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  showSaveStatus('SAUVEGARDE TÉLÉCHARGÉE', 'success');
+  showSaveStatus('SAUVEGARDE TÃ‰LÃ‰CHARGÃ‰E', 'success');
 }
 
 async function importProfileBackup(file) {
@@ -1323,7 +1677,7 @@ async function importProfileBackup(file) {
     const data = JSON.parse(await file.text());
     const profile = sanitizeImportedProfile(data);
     applyProfileBackup(profile);
-    writeStorage(STORAGE_KEYS.restoreNotice, 'SAUVEGARDE RESTAURÉE');
+    writeStorage(STORAGE_KEYS.restoreNotice, 'SAUVEGARDE RESTAURÃ‰E');
     window.location.reload();
   } catch (error) {
     showSaveStatus(error instanceof Error ? error.message.toUpperCase() : 'SAUVEGARDE INVALIDE', 'error');
@@ -1351,13 +1705,15 @@ function updateClassUI() {
     button.classList.toggle('locked', !unlocked);
     button.setAttribute('aria-disabled', String(!unlocked));
     if (id === 'assassin' && ui.assassinClassStatus) {
-      ui.assassinClassStatus.textContent = unlocked ? (equippedClass === id ? 'ÉQUIPÉE' : 'POSSÉDÉE') : `${formatCredits(PLAYER_CLASSES.assassin.price)} CR`;
+      ui.assassinClassStatus.textContent = unlocked ? (equippedClass === id ? 'Ã‰QUIPÃ‰E' : 'POSSÃ‰DÃ‰E') : `${formatCredits(PLAYER_CLASSES.assassin.price)} CR`;
     }
   });
   if (ui.abilityHint) {
-    ui.abilityHint.innerHTML = equippedClass === 'assassin'
-      ? '<kbd>ESPACE</kbd> DASH'
-      : '<kbd>ESPACE</kbd> CAPACITÉ';
+    // L'Assassin n'a un dash nu que tant qu'il n'a achete aucune capacite.
+    const label = equippedAbility && ABILITY_DEFINITIONS[equippedAbility]?.classId === equippedClass
+      ? 'CAPACITÃ‰'
+      : 'DASH';
+    ui.abilityHint.innerHTML = `<kbd>ESPACE</kbd> ${label}`;
   }
 }
 
@@ -1379,7 +1735,7 @@ function selectPlayerClass(id) {
   }
   if (!ownsClass(id)) {
     openShop();
-    showSaveStatus('DÉBLOQUEZ L’ASSASSIN POUR 2 500 CR DANS L’ATELIER', 'error');
+    showSaveStatus('DÃ‰BLOQUEZ Lâ€™ASSASSIN POUR 2 500 CR DANS Lâ€™ATELIER', 'error');
     return;
   }
   equippedClass = id;
@@ -1396,8 +1752,20 @@ function getWeaponDefinition(id) {
   return WEAPON_DEFINITIONS[id] || WEAPON_DEFINITIONS.pulse;
 }
 
+// Armes de depart de chaque classe. Changer de classe ou de sauvegarder une
+// veille version ne doit jamais laisser l'operateur sans arme utilisable.
+const CLASS_DEFAULT_WEAPON = Object.freeze({ ranger: 'pulse', assassin: 'twinSabers' });
+
+// L'arme equipee n'est valide que pour sa classe. Changer de classe en
+// garde une, ou bascule sur celle de la classe.
+function resolveWeaponForClass(id, classId) {
+  const definition = WEAPON_DEFINITIONS[id];
+  if (definition && definition.classId === classId) return definition;
+  return WEAPON_DEFINITIONS[CLASS_DEFAULT_WEAPON[classId] || 'pulse'];
+}
+
 function ownsWeapon(id) {
-  return id === 'pulse' || ownedWeapons[id] === true;
+  return (WEAPON_DEFINITIONS[id] && WEAPON_DEFINITIONS[id].price === 0) || ownedWeapons[id] === true;
 }
 
 function getAbilityDefinition(id) {
@@ -1428,42 +1796,45 @@ function getPermanentStats() {
     speedMultiplier: 1,
     damageReduction: 0,
     regen: 0,
-    pierce: 0
+    pierce: 0,
+    lifesteal: 0
   };
 
   META_EQUIPMENT.forEach((item) => {
+    // Un equipement d'une autre classe n'apporte rien : changer de classe ne
+    // doit pas laisser des bonus orphelins comptes.
+    if (item.classId !== 'shared' && item.classId !== equippedClass) return;
     const level = getEquipmentLevel(item.id);
     switch (item.id) {
       case 'reinforcedCore':
         stats.maxHealth += 18 * level;
         break;
       case 'pulseCoil':
-        stats.damageMultiplier += 0.1 * level;
+      case 'bladeEdge':
+        stats.damageMultiplier += (item.id === 'bladeEdge' ? 0.09 : 0.08) * level;
         break;
       case 'overclock':
-        stats.fireRateMultiplier += 0.09 * level;
+      case 'tendonSurge':
+        stats.fireRateMultiplier += (item.id === 'tendonSurge' ? 0.08 : 0.07) * level;
         break;
       case 'tacticalMagazine':
-        stats.magazine += 6 * level;
+        stats.magazine += 5 * level;
         break;
       case 'neuralShield':
         stats.damageReduction += 0.04 * level;
         break;
-      case 'servoMotors':
-        stats.speedMultiplier += 0.06 * level;
-        break;
-      case 'naniteCore':
-        stats.regen += 0.3 * level;
-        break;
-      case 'piercingCore':
-        stats.pierce += level;
+      case 'bloodPact':
+        stats.lifesteal += 2 * level;
         break;
       default:
         break;
     }
   });
 
-  stats.damageReduction = Math.min(0.6, stats.damageReduction);
+  // Le plafond rÃ©el est posÃ© par applyUpgradeStats (68 %), pas ici : un
+  // plafond de 60 % ici Ã©tait du code inatteignable, puisque les rÃ©ductions
+  // permanentes ne dÃ©passent jamais 16 %.
+  stats.damageReduction = Math.min(0.16, stats.damageReduction);
   return stats;
 }
 
@@ -1495,14 +1866,14 @@ function renderShop() {
     card.className = `shop-item class-item${selected ? ' weapon-selected' : ''}`;
     card.style.setProperty('--shop-color', classDefinition.color);
     card.disabled = selected || (!owned && !canBuy);
-    card.setAttribute('aria-label', `${classDefinition.name}, ${owned ? 'possédée' : `non possédée, ${formatCredits(classDefinition.price)} crédits`}`);
+    card.setAttribute('aria-label', `${classDefinition.name}, ${owned ? 'possÃ©dÃ©e' : `non possÃ©dÃ©e, ${formatCredits(classDefinition.price)} crÃ©dits`}`);
     const action = selected
-      ? '<span class="shop-maxed">ÉQUIPÉE</span>'
+      ? '<span class="shop-maxed">Ã‰QUIPÃ‰E</span>'
       : owned
-        ? '<span class="shop-cost">ÉQUIPER</span><small>ACTIVER</small>'
+        ? '<span class="shop-cost">Ã‰QUIPER</span><small>ACTIVER</small>'
         : `<span class="shop-cost">${formatCredits(classDefinition.price)} CR</span><small>ACHETER</small>`;
     card.innerHTML = `
-      <span class="shop-item-top"><span>${classDefinition.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÉDÉE' : 'VERROUILLÉE'}</span></span>
+      <span class="shop-item-top"><span>${classDefinition.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÃ‰DÃ‰E' : 'VERROUILLÃ‰E'}</span></span>
       <span class="shop-item-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${classDefinition.icon}</svg></span>
       <h3>${classDefinition.name}</h3>
       <p>${classDefinition.description}</p>
@@ -1526,7 +1897,11 @@ function renderShop() {
     ui.shopClasses.appendChild(card);
   });
 
-  Object.values(WEAPON_DEFINITIONS).forEach((weapon) => {
+  // L'atelier n'affiche que l'arsenal de la classe equipped : l'Assassin ne
+  // doit pas voir les fusils, ni le Ranger les sabres.
+  Object.values(WEAPON_DEFINITIONS)
+    .filter((weapon) => weapon.classId === equippedClass)
+    .forEach((weapon) => {
     const owned = ownsWeapon(weapon.id);
     const selected = equippedWeapon === weapon.id;
     const canBuy = credits >= weapon.price;
@@ -1535,39 +1910,52 @@ function renderShop() {
     card.className = `shop-item weapon-item${selected ? ' weapon-selected' : ''}`;
     card.style.setProperty('--shop-color', weapon.color);
     card.disabled = selected || (!owned && !canBuy);
-    card.setAttribute('aria-label', `${weapon.name}, ${owned ? 'possédée' : 'non possédée'}`);
+    card.setAttribute('aria-label', `${weapon.name}, ${owned ? 'possÃ©dÃ©e' : 'non possÃ©dÃ©e'}`);
 
     const action = selected
-      ? '<span class="shop-maxed">ÉQUIPÉE</span>'
+      ? '<span class="shop-maxed">Ã‰QUIPÃ‰E</span>'
       : owned
-        ? '<span class="shop-cost">ÉQUIPER</span><small>ACTIVER</small>'
+        ? '<span class="shop-cost">Ã‰QUIPER</span><small>ACTIVER</small>'
         : `<span class="shop-cost">${formatCredits(weapon.price)} CR</span><small>ACHETER</small>`;
+    const isSlash = weapon.fireMode === 'slash';
     const projectileStat = weapon.pellets > 1 ? `<span>PROJECTILES <b>${weapon.pellets}</b></span>` : '';
     const pierceStat = weapon.pierce > 0 ? `<span>PERFORATION <b>${weapon.pierce + 1}</b></span>` : '';
-    const accuracy = weapon.accuracy ?? Math.round(Math.max(0, 100 - weapon.spread * 450));
-    const headshot = weapon.headshotMultiplier ?? 1.65;
+    const targetStat = isSlash ? `<span>CIBLES <b>${weapon.slashTargets}</b></span>` : '';
+    const headshot = isSlash ? '' : `<span>TÃŠTE <b>${(weapon.headshotMultiplier ?? 1.65).toFixed(1)}x</b></span>`;
+    const magazineStat = isSlash ? '' : `<span>CHARGEUR <b>${weapon.magazine}</b></span>`;
+    const reloadStat = isSlash ? '' : `<span>RECHARGE <b>${weapon.reload.toFixed(2)}s</b></span>`;
     const special = weapon.special || 'STANDARD';
-    const recoil = {
-      pulse: 'FAIBLE', scatter: 'MOYEN', smg: 'TRÈS FAIBLE', rail: 'ÉLEVÉ',
-      vector: 'MOYEN', inferno: 'FAIBLE', cryo: 'MOYEN', plasma: 'ÉLEVÉ'
-    }[weapon.id] || 'MOYEN';
+    // Le DPS affiche ne vaut que pour une arme a distance. Pour un sabre, on
+    // affiche le degat par frappe et le nombre de cibles : l'ancien calcul
+    // ignorait la perforation et les explosions, ce qui rendait SCATTER-7
+    // (450 CR) plus rentable que RAIL (950 CR).
+    const damageStat = isSlash
+      ? `<span>FRAPPE <b>${weapon.damage}</b></span>`
+      : `<span>DMG <b>${weapon.damage}</b></span>`;
+    const rateStat = isSlash
+      ? `<span>FRAPPES/S <b>${weapon.fireRate.toFixed(1)}</b></span>`
+      : `<span>CADENCE <b>${weapon.fireRate.toFixed(1)}</b></span>`;
+    const dpsStat = isSlash
+      ? `<span>DEGÃ‚TS/S <b>${Math.round(weapon.damage * weapon.fireRate * (weapon.slashTargets * 0.75 + 0.25))}</b></span>`
+      : `<span>DPS <b>${Math.round(weapon.damage * weapon.fireRate * weapon.pellets * (weapon.pierce + 1) * 0.6)}</b></span>`;
+    const accuracyStat = isSlash ? '' : `<span>PRÃ‰CISION <b>${Math.round(Math.max(0, 100 - weapon.spread * 450))}%</b></span>`;
     const stats = [
-      `<span>DMG <b>${weapon.damage}</b></span>`,
-      `<span>DPS <b>${Math.round(weapon.damage * weapon.fireRate * weapon.pellets)}</b></span>`,
-      `<span>CADENCE <b>${weapon.fireRate.toFixed(1)}</b></span>`,
-      `<span>CHARGEUR <b>${weapon.magazine}</b></span>`,
-      `<span>PORTÉE <b>${weapon.range} m</b></span>`,
-      `<span>PRÉCISION <b>${accuracy}%</b></span>`,
-      `<span>TÊTE <b>${headshot.toFixed(1)}x</b></span>`,
-      `<span>RECHARGE <b>${weapon.reload.toFixed(2)}s</b></span>`,
-      `<span>RECUL <b>${recoil}</b></span>`,
+      damageStat,
+      dpsStat,
+      rateStat,
+      magazineStat,
+      `<span>PORTÃ‰E <b>${weapon.range} m</b></span>`,
+      accuracyStat,
+      headshot,
+      reloadStat,
+      targetStat,
       projectileStat,
       pierceStat,
       `<span>EFFET <b>${special}</b></span>`
-    ].join('');
+    ].filter(Boolean).join('');
 
     card.innerHTML = `
-      <span class="shop-item-top"><span>${weapon.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÉDÉE' : 'VERROUILLÉE'}</span></span>
+      <span class="shop-item-top"><span>${weapon.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÃ‰DÃ‰E' : 'VERROUILLÃ‰E'}</span></span>
       <span class="shop-item-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${weapon.icon}</svg></span>
       <h3>${weapon.name}</h3>
       <p>${weapon.description}</p>
@@ -1581,7 +1969,9 @@ function renderShop() {
     ui.shopWeapons.appendChild(card);
   });
 
-  Object.values(ABILITY_DEFINITIONS).forEach((ability) => {
+  Object.values(ABILITY_DEFINITIONS)
+    .filter((ability) => ability.classId === equippedClass)
+    .forEach((ability) => {
     const owned = ownsAbility(ability.id);
     const selected = equippedAbility === ability.id;
     const canBuy = credits >= ability.price;
@@ -1590,23 +1980,23 @@ function renderShop() {
     card.className = `shop-item ability-item${selected ? ' ability-selected' : ''}`;
     card.style.setProperty('--shop-color', ability.color);
     card.disabled = selected || (!owned && !canBuy);
-    card.setAttribute('aria-label', `${ability.name}, ${owned ? 'possédée' : 'non possédée'}`);
+    card.setAttribute('aria-label', `${ability.name}, ${owned ? 'possÃ©dÃ©e' : 'non possÃ©dÃ©e'}`);
 
     const action = selected
-      ? '<span class="shop-maxed">ÉQUIPÉE</span>'
+      ? '<span class="shop-maxed">Ã‰QUIPÃ‰E</span>'
       : owned
-        ? '<span class="shop-cost">ÉQUIPER</span><small>ACTIVER</small>'
+        ? '<span class="shop-cost">Ã‰QUIPER</span><small>ACTIVER</small>'
         : `<span class="shop-cost">${formatCredits(ability.price)} CR</span><small>ACHETER</small>`;
     const duration = ability.duration > 0 ? `${ability.duration}s` : 'INSTANT';
     const stats = [
       `<span>RECHARGE <b>${ability.cooldown}s</b></span>`,
       `<span>DUREE <b>${duration}</b></span>`,
-      `<span>RAYON <b>${ability.radius || '—'}</b></span>`,
+      `<span>RAYON <b>${ability.radius || 'â€”'}</b></span>`,
       `<span>EFFET <b>${ability.effect}</b></span>`
     ].join('');
 
     card.innerHTML = `
-      <span class="shop-item-top"><span>${ability.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÉDÉE' : 'VERROUILLÉE'}</span></span>
+      <span class="shop-item-top"><span>${ability.short}</span><span>${selected ? 'ACTIVE' : owned ? 'POSSÃ‰DÃ‰E' : 'VERROUILLÃ‰E'}</span></span>
       <span class="shop-item-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${ability.icon}</svg></span>
       <h3>${ability.name}</h3>
       <p>${ability.description}</p>
@@ -1620,7 +2010,10 @@ function renderShop() {
     ui.shopAbilities.appendChild(card);
   });
 
-  META_EQUIPMENT.forEach((item) => {
+  // L'equipement permanent est lui aussi filtre par classe : un module de
+  // sabres n'a aucun effet sur un Ranger, l'afficher serait du leurre.
+  const visibleEquipment = META_EQUIPMENT.filter((item) => item.classId === 'shared' || item.classId === equippedClass);
+  visibleEquipment.forEach((item) => {
     const level = getEquipmentLevel(item.id);
     const maxed = level >= item.maxLevel;
     const nextCost = getEquipmentCost(item, level + 1);
@@ -1637,7 +2030,7 @@ function renderShop() {
     const pips = Array.from({ length: item.maxLevel }, (_, index) =>
       `<i class="${index < level ? 'active' : ''}"></i>`).join('');
     const action = maxed
-      ? '<span class="shop-maxed">ÉQUIPÉ // MAX</span>'
+      ? '<span class="shop-maxed">Ã‰QUIPÃ‰ // MAX</span>'
       : `<span class="shop-cost">${formatCredits(nextCost)} CR</span><small>ACHETER</small>`;
 
     card.innerHTML = `
@@ -1652,9 +2045,13 @@ function renderShop() {
     ui.shopItems.appendChild(card);
   });
 
-  const ownedWeaponsCount = Object.values(ownedWeapons).filter(Boolean).length;
-  const ownedAbilitiesCount = Object.values(ownedAbilities).filter(Boolean).length;
-  ui.shopOwnedCount.textContent = `${Object.values(ownedClasses).filter(Boolean).length} / ${Object.keys(PLAYER_CLASSES).length} CLASSES // ${ownedWeaponsCount} / ${Object.keys(WEAPON_DEFINITIONS).length} ARMES // ${ownedAbilitiesCount} / ${Object.keys(ABILITY_DEFINITIONS).length} CAPACITÉS // ${installedCount} / ${META_EQUIPMENT.length} MODULES`;
+  // Les compteurs n'affichent que ce qui est reellement accessible avec la
+  // classe courante, sinon ils annoncent des armes inatteignables.
+  const classWeapons = Object.values(WEAPON_DEFINITIONS).filter((weapon) => weapon.classId === equippedClass);
+  const classAbilities = Object.values(ABILITY_DEFINITIONS).filter((ability) => ability.classId === equippedClass);
+  const ownedWeaponsCount = classWeapons.filter((weapon) => ownsWeapon(weapon.id)).length;
+  const ownedAbilitiesCount = classAbilities.filter((ability) => ownsAbility(ability.id)).length;
+  ui.shopOwnedCount.textContent = `${equippedClass === 'ranger' ? 'RANGER' : 'ASSASSIN'} // ${ownedWeaponsCount} / ${classWeapons.length} ARMES // ${ownedAbilitiesCount} / ${classAbilities.length} CAPACITÃ‰S // ${installedCount} / ${visibleEquipment.length} MODULES`;
   updateCreditsUI();
 }
 
@@ -1679,7 +2076,8 @@ function buyPlayerClass(id) {
 function buyWeapon(id) {
   if (state !== GAME_STATE.SHOP) return;
   const weapon = WEAPON_DEFINITIONS[id];
-  if (!weapon || ownsWeapon(id) || credits < weapon.price) return;
+  if (!weapon || weapon.classId !== equippedClass) return;
+  if (ownsWeapon(id) || credits < weapon.price) return;
   credits -= weapon.price;
   ownedWeapons[id] = true;
   equippedWeapon = id;
@@ -1693,6 +2091,7 @@ function buyWeapon(id) {
 
 function equipWeapon(id) {
   if (state !== GAME_STATE.SHOP || !ownsWeapon(id) || equippedWeapon === id) return;
+  if (WEAPON_DEFINITIONS[id]?.classId !== equippedClass) return;
   equippedWeapon = id;
   player.weaponId = id;
   saveProfile();
@@ -1704,7 +2103,8 @@ function equipWeapon(id) {
 function buyAbility(id) {
   if (state !== GAME_STATE.SHOP) return;
   const ability = ABILITY_DEFINITIONS[id];
-  if (!ability || ownsAbility(id) || credits < ability.price) return;
+  if (!ability || ability.classId !== equippedClass) return;
+  if (ownsAbility(id) || credits < ability.price) return;
   credits -= ability.price;
   ownedAbilities[id] = true;
   equippedAbility = id;
@@ -1718,6 +2118,7 @@ function buyAbility(id) {
 
 function equipAbility(id) {
   if (state !== GAME_STATE.SHOP || !ownsAbility(id) || equippedAbility === id) return;
+  if (ABILITY_DEFINITIONS[id]?.classId !== equippedClass) return;
   equippedAbility = id;
   player.abilityId = id;
   saveProfile();
@@ -1757,6 +2158,7 @@ function buyEquipment(id) {
   if (state !== GAME_STATE.SHOP) return;
   const item = META_EQUIPMENT.find((definition) => definition.id === id);
   if (!item) return;
+  if (item.classId !== 'shared' && item.classId !== equippedClass) return;
   const level = getEquipmentLevel(id);
   if (level >= item.maxLevel) return;
   const cost = getEquipmentCost(item, level + 1);
@@ -1771,46 +2173,141 @@ function buyEquipment(id) {
   audio.purchase();
 }
 
+// Valeurs par niveau des ameliorations de vague.
+//
+// Le changement le plus important de cet equilibrage : ces bonus sont
+// ADDITIFS en espace de niveau. Avant, damage x1.32 et fireRate x1.24 a chaque
+// niveau donnaient 1,32^6 x 1,24^6 = x32 de puissance apres 12 choix, ce qui
+// rendait la montee triviale puis la fin injouable. Ici 6 niveaux de degats
+// donnent +78 % et 6 niveaux de cadence +66 %.
+const UPGRADE_VALUES = {
+  damagePer: 0.13,
+  fireRatePer: 0.11,
+  armorPer: 28,
+  speedPer: 0.06,
+  regenPer: 1.2,
+  reductionPer: 0.15,
+  reductionCap: 0.68,
+  magazinePer: 8,
+  reloadPer: 0.11,
+  reloadFloor: 0.45,
+  killHealPer: 5,
+  executionPer: 0.35,
+  poiseHealthPer: 18,
+  poiseRegenPer: 0.5,
+  veilIFramePer: 0.05,
+  focusPer: 0.35,
+  reachPer: 0.35,
+  reachArcPer: 0.06
+};
+
+// Recalcule les statistiques derivees des ameliorations. Appele apres chaque
+// choix ET au reset, pour que la valeur soit toujours derivable de la base.
+function applyUpgradeStats() {
+  const permanent = getPermanentStats();
+  const upgrades = player.upgrades;
+  const isAssassin = player.classId === 'assassin';
+  const damageKey = isAssassin ? 'shadowDamage' : 'damage';
+  const rateKey = isAssassin ? 'shadowFlurry' : 'fireRate';
+
+  const damageScale = (1 + UPGRADE_VALUES.damagePer * (upgrades[damageKey] || 0)) * permanent.damageMultiplier;
+  const rateScale = (1 + UPGRADE_VALUES.fireRatePer * (upgrades[rateKey] || 0)) * permanent.fireRateMultiplier;
+
+  player.damage = player.baseDamage * damageScale;
+  player.fireRate = player.baseFireRate * rateScale;
+  player.maxHealth = player.baseMaxHealth
+    + UPGRADE_VALUES.armorPer * (upgrades.armor || 0)
+    + UPGRADE_VALUES.poiseHealthPer * (upgrades.shadowPoise || 0);
+  player.health = Math.min(player.maxHealth, player.health);
+  player.speed = player.baseSpeed * (1 + UPGRADE_VALUES.speedPer * (upgrades.speed || 0)) * permanent.speedMultiplier;
+  player.regen = permanent.regen
+    + UPGRADE_VALUES.regenPer * (upgrades.repair || 0)
+    + UPGRADE_VALUES.poiseRegenPer * (upgrades.shadowPoise || 0);
+  player.damageReduction = Math.min(
+    UPGRADE_VALUES.reductionCap,
+    UPGRADE_VALUES.reductionPer * (upgrades.stabilize || 0) + permanent.damageReduction
+  );
+  player.magazineSize = player.baseMagazine + UPGRADE_VALUES.magazinePer * (upgrades.magazine || 0);
+  player.reloadTime = Math.max(
+    UPGRADE_VALUES.reloadFloor,
+    player.baseReloadTime * (1 - UPGRADE_VALUES.reloadPer * (upgrades.reload || 0)) * permanent.reloadMultiplier
+  );
+  player.pierce = player.basePierce + (upgrades.pierce || 0);
+  player.killHeal = UPGRADE_VALUES.killHealPer * (upgrades.shadowBlood || 0) + permanent.lifesteal;
+  player.executionBonus = 1 + UPGRADE_VALUES.executionPer * (upgrades.shadowExecution || 0);
+  player.dashCooldownDuration = Math.max(1.1, player.baseDashCooldown * (1 - 0.09 * (upgrades.shadowVeil || 0)));
+  player.dashInvulnerability = 0.22 + UPGRADE_VALUES.veilIFramePer * (upgrades.shadowVeil || 0);
+  player.headshotBonus = UPGRADE_VALUES.focusPer * (upgrades.focus || 0);
+  player.weaponRange = player.baseWeaponRange + UPGRADE_VALUES.reachPer * (upgrades.shadowReach || 0);
+  player.slashArc = Math.min(0.95, player.baseSlashArc + UPGRADE_VALUES.reachArcPer * (upgrades.shadowReach || 0));
+}
+
 function resetStats() {
   const permanent = getPermanentStats();
   const classDefinition = getPlayerClassDefinition();
   const weaponDefinition = getWeaponDefinition(equippedWeapon);
   const isAssassin = classDefinition.id === 'assassin';
+  const classStats = classDefinition.stats;
+  // Une arme de l'autre classe n'est pas equipable : on retombe sur celle de
+  // la classe. L'Assassin peut porter une arme 'ray' (shuriken), donc c'est
+  // le fireMode de l'arme qui decide des munitions, pas la classe.
+  const effectiveWeapon = resolveWeaponForClass(weaponDefinition.id, classDefinition.id);
+  const isSlash = effectiveWeapon.fireMode === 'slash';
   player.classId = classDefinition.id;
-  player.weaponId = weaponDefinition.id;
-  player.abilityId = equippedAbility;
+  player.weaponId = effectiveWeapon.id;
+  player.abilityId = equippedAbility && getAbilityDefinition(equippedAbility)?.classId === classDefinition.id
+    ? equippedAbility
+    : '';
   Object.assign(player, {
-    health: (isAssassin ? 90 : CONFIG.baseHealth) + permanent.maxHealth,
-    maxHealth: (isAssassin ? 90 : CONFIG.baseHealth) + permanent.maxHealth,
-    speed: (isAssassin ? 7.2 : CONFIG.baseSpeed) * permanent.speedMultiplier,
-    damage: (isAssassin ? 38 : weaponDefinition.damage) * permanent.damageMultiplier,
-    fireRate: (isAssassin ? 2.8 : weaponDefinition.fireRate) * permanent.fireRateMultiplier,
-    weaponRange: isAssassin ? 3.6 : weaponDefinition.range,
-    weaponPellets: isAssassin ? 1 : weaponDefinition.pellets,
-    weaponSpread: isAssassin ? 0 : weaponDefinition.spread,
+    baseMaxHealth: classStats.health + permanent.maxHealth,
+    baseSpeed: classStats.speed,
+    health: classStats.health + permanent.maxHealth,
+    maxHealth: classStats.health + permanent.maxHealth,
+    speed: classStats.speed,
+    baseDamage: isSlash ? classStats.slashDamage : effectiveWeapon.damage,
+    baseFireRate: isSlash ? classStats.slashRate : effectiveWeapon.fireRate,
+    baseMagazine: isSlash ? 0 : effectiveWeapon.magazine + permanent.magazine,
+    baseReloadTime: isSlash ? 0 : effectiveWeapon.reload,
+    basePierce: isSlash ? 0 : effectiveWeapon.pierce + permanent.pierce,
+    baseDashCooldown: 2.6,
+    baseWeaponRange: isSlash ? (effectiveWeapon.slashRange || classStats.slashRange) : effectiveWeapon.range,
+    baseSlashArc: isSlash ? (effectiveWeapon.slashArc ?? 0.34) : 0,
+    headshotBonus: 0,
+    dashInvulnerability: 0.22,
+    weaponRange: isSlash ? (effectiveWeapon.slashRange || classStats.slashRange) : effectiveWeapon.range,
+    weaponPellets: isSlash ? 1 : effectiveWeapon.pellets,
+    weaponSpread: isSlash ? 0 : effectiveWeapon.spread,
     abilityCooldown: 0,
     abilityTimer: 0,
+    abilityDamageBonus: 0,
+    abilityKillHeal: 0,
+    vanishTimer: 0,
+    critPending: false,
     overdriveTimer: 0,
-    magazineSize: isAssassin ? 0 : weaponDefinition.magazine + permanent.magazine,
-    ammo: isAssassin ? 0 : weaponDefinition.magazine + permanent.magazine,
-    reloadTime: isAssassin ? 0 : weaponDefinition.reload * permanent.reloadMultiplier,
+    magazineSize: isSlash ? 0 : effectiveWeapon.magazine + permanent.magazine,
+    ammo: isSlash ? 0 : effectiveWeapon.magazine + permanent.magazine,
+    reloadTime: isSlash ? 0 : effectiveWeapon.reload * permanent.reloadMultiplier,
     reloadRemaining: 0,
     fireCooldown: 0,
     dashCooldown: 0,
-    dashCooldownDuration: 2.4,
+    dashCooldownDuration: 2.6,
     dashTimer: 0,
     slashTimer: 0,
-    slashTargets: 2,
+    slashTargets: isSlash ? (effectiveWeapon.slashTargets || classStats.slashTargets) : 0,
+    slashArc: isSlash ? (effectiveWeapon.slashArc ?? 0.34) : 0,
+    dashDamage: isSlash ? (effectiveWeapon.dashDamage || 0) : 0,
     killHeal: 0,
-    executionBonus: 0,
+    executionBonus: 1,
     regen: permanent.regen,
     damageReduction: permanent.damageReduction,
-    pierce: isAssassin ? 0 : weaponDefinition.pierce + permanent.pierce,
+    pierce: isSlash ? 0 : effectiveWeapon.pierce + permanent.pierce,
     recoil: 0,
     shake: 0,
     invulnerable: 0,
     bobTime: 0
   });
+  applyUpgradeStats();
+  player.health = player.maxHealth;
   Object.keys(player.upgrades).forEach((key) => { player.upgrades[key] = 0; });
   runTime = 0;
   shotsFired = 0;
@@ -1826,18 +2323,45 @@ function resetStats() {
   player.velocity.set(0, 0, 0);
 }
 
+function disposeEffect(object) {
+  if (!object) return;
+  if (object.geometry) object.geometry.dispose();
+  if (object.material) {
+    const list = Array.isArray(object.material) ? object.material : [object.material];
+    list.forEach((material) => material.dispose());
+  }
+}
+
 function clearDynamicObjects() {
   enemies.splice(0).forEach((enemy) => {
     scene.remove(enemy.root);
     disposeEnemy(enemy);
   });
   enemyTargets.length = 0;
+  syncRaycastTargets();
   navTimer = 0;
-  particles.splice(0).forEach((particle) => scene.remove(particle.mesh));
-  tracers.splice(0).forEach((tracer) => scene.remove(tracer.line));
-  ripples.splice(0).forEach((ripple) => scene.remove(ripple.mesh));
-  slashEffects.splice(0).forEach((effect) => scene.remove(effect.mesh));
-  dashTrails.splice(0).forEach((effect) => scene.remove(effect.mesh));
+  // scene.remove() ne libÃ¨re rien : sans dispose(), chaque partie quittÃ©e
+  // laisse ses gÃ©omÃ©tries et matÃ©riaux dans les buffers GPU.
+  particles.splice(0).forEach((particle) => {
+    scene.remove(particle.mesh);
+    releaseDebrisMaterial(particle.mesh.material);
+  });
+  tracers.splice(0).forEach((tracer) => {
+    scene.remove(tracer.line);
+    disposeEffect(tracer.line);
+  });
+  ripples.splice(0).forEach((ripple) => {
+    scene.remove(ripple.mesh);
+    disposeEffect(ripple.mesh);
+  });
+  slashEffects.splice(0).forEach((effect) => {
+    scene.remove(effect.mesh);
+    disposeEffect(effect.mesh);
+  });
+  dashTrails.splice(0).forEach((effect) => {
+    scene.remove(effect.mesh);
+    disposeEffect(effect.mesh);
+  });
 }
 
 function resetCamera() {
@@ -2172,32 +2696,57 @@ function createEnvironment() {
   animatedRings.push({ mesh: stars, speed: 0.001, axis: 'menu' });
 }
 
+// Courbe une lame deja extrudee : decale chaque sommet en X selon sa
+// position le long de Z, pour obtenir le sori d'un sabre. Three.js n'a pas
+// de modificateur de courbure, on applique donc la deformation directement.
+// Courbe une lame deja extrudee : decale chaque sommet en X selon sa
+// position le long de Z, pour obtenir le sori d'un sabre. Three.js n'a pas
+// de modificateur de courbure, on applique donc la deformation directement.
+function curveBlade(geometry, length, amount) {
+  const positions = geometry.attributes.position;
+  for (let index = 0; index < positions.count; index += 1) {
+    const z = positions.getZ(index);
+    // 0 a la garde, 1 a la pointe.
+    const t = Math.min(1, Math.max(0, -z / length));
+    positions.setX(index, positions.getX(index) + amount * t * t);
+  }
+  positions.needsUpdate = true;
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 function createAssassinWeapon() {
   const group = new THREE.Group();
   group.position.set(0, -0.44, -0.72);
   group.rotation.set(-0.02, 0, 0);
   group.visible = false;
 
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x0d0a16, roughness: 0.24, metalness: 0.92 });
-  const handleMaterial = new THREE.MeshStandardMaterial({ color: 0x241733, roughness: 0.42, metalness: 0.72 });
+  // Sur la maquette de reference, le corps de la lame est SOMBRE et
+  // metallique : seuls le tranchant et une nervure emettent. Une lame
+  // entierement emissive donnerait un sabre en plastique lumineux.
+  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x14161f, roughness: 0.3, metalness: 0.95 });
+  const handleMaterial = new THREE.MeshStandardMaterial({ color: 0x1d2230, roughness: 0.45, metalness: 0.8 });
+  const bladeMaterial = new THREE.MeshStandardMaterial({ color: 0x1b1d2b, roughness: 0.22, metalness: 0.9 });
   const purpleMaterial = new THREE.MeshStandardMaterial({
-    color: 0x321653,
+    color: 0x2a1450,
     emissive: 0xa855ff,
-    emissiveIntensity: 4.2,
-    roughness: 0.14,
-    metalness: 0.42
+    emissiveIntensity: 1.4,
+    roughness: 0.3,
+    metalness: 0.6
   });
   const cyanMaterial = new THREE.MeshStandardMaterial({
     color: 0x06252b,
     emissive: 0x00f5ff,
-    emissiveIntensity: 3.4,
-    roughness: 0.16,
+    emissiveIntensity: 2.6,
+    roughness: 0.2,
     metalness: 0.5
   });
+  // La tranche est le seul point vraiment lumineux.
+  const edgeMaterial = new THREE.MeshBasicMaterial({ color: 0xffd2ff, toneMapped: false });
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: 0x9b5cff,
     transparent: true,
-    opacity: 0.2,
+    opacity: 0.12,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide
@@ -2212,111 +2761,172 @@ function createAssassinWeapon() {
   });
   nodeMaterial.toneMapped = false;
 
-  // Une lame extrudée à sections variables donne une silhouette plus nette qu'une simple boîte.
-  const bladeShape = new THREE.Shape();
-  bladeShape.moveTo(-0.07, 0.12);
-  bladeShape.lineTo(0.07, 0.12);
-  bladeShape.lineTo(0.085, -0.92);
-  bladeShape.lineTo(0.038, -1.22);
-  bladeShape.lineTo(0, -1.36);
-  bladeShape.lineTo(-0.038, -1.22);
-  bladeShape.lineTo(-0.085, -0.92);
-  bladeShape.closePath();
-  const bladeGeometry = new THREE.ExtrudeGeometry(bladeShape, {
-    depth: 0.045,
-    steps: 1,
-    bevelEnabled: true,
-    bevelSegments: 2,
-    bevelSize: 0.012,
-    bevelThickness: 0.012
-  });
-  bladeGeometry.rotateX(Math.PI / 2);
-  bladeGeometry.translate(0, -0.0225, 0);
+  const BLADE_LENGTH = 1.34;
+  const BLADE_CURVE = 0.29;
 
-  const spineGeometry = new THREE.BoxGeometry(0.018, 0.026, 1.08);
-  const edgeGeometry = new THREE.BoxGeometry(0.012, 0.032, 1.08);
-  const emitterGeometry = new THREE.CylinderGeometry(0.11, 0.085, 0.16, 8);
-  const handleGeometry = new THREE.CylinderGeometry(0.052, 0.068, 0.4, 8);
-  const gripRingGeometry = new THREE.TorusGeometry(0.071, 0.011, 5, 12);
-  const pommelGeometry = new THREE.OctahedronGeometry(0.085, 0);
-  const nodeGeometry = new THREE.SphereGeometry(0.019, 6, 4);
+  // Profil de lame : dos epais cote garde, tranche qui s'affine jusqu'a la
+  // pointe. La section est etroite pour garder une silhouette de sabre.
+  const bladeShape = new THREE.Shape();
+  bladeShape.moveTo(0, 0);
+  bladeShape.lineTo(0.052, -0.06);
+  bladeShape.lineTo(0.046, -0.72);
+  bladeShape.lineTo(0.03, -1.12);
+  bladeShape.lineTo(0.008, -BLADE_LENGTH);
+  bladeShape.lineTo(-0.006, -1.1);
+  bladeShape.lineTo(-0.014, -0.7);
+  bladeShape.lineTo(-0.016, -0.05);
+  bladeShape.closePath();
+  const bladeGeometry = curveBlade(
+    new THREE.ExtrudeGeometry(bladeShape, {
+      depth: 0.036,
+      steps: 1,
+      bevelEnabled: true,
+      bevelSegments: 1,
+      bevelSize: 0.008,
+      bevelThickness: 0.008
+    }),
+    BLADE_LENGTH,
+    BLADE_CURVE
+  );
+  bladeGeometry.rotateX(Math.PI / 2);
+  bladeGeometry.translate(0, -0.018, 0);
+
+  // Trait de tranche lumineux. Il doit depasser le corps de lame, sinon il
+  // est masque par le z-buffer : d'ou le decalage de -0.016 sur X.
+  const edgeShape = new THREE.Shape();
+  edgeShape.moveTo(0, 0);
+  edgeShape.lineTo(0.016, -0.05);
+  edgeShape.lineTo(0.009, -1.1);
+  edgeShape.lineTo(0.003, -BLADE_LENGTH * 0.985);
+  edgeShape.lineTo(-0.004, -1.08);
+  edgeShape.lineTo(-0.004, -0.04);
+  edgeShape.closePath();
+  const edgeGeometry = curveBlade(
+    new THREE.ExtrudeGeometry(edgeShape, {
+      depth: 0.042,
+      steps: 1,
+      bevelEnabled: false
+    }),
+    BLADE_LENGTH,
+    BLADE_CURVE
+  );
+  edgeGeometry.rotateX(Math.PI / 2);
+  edgeGeometry.translate(0, -0.021, 0);
+
+  // Nervure violette en retrait du dos : la seconde ligne lumineuse de la
+  // maquette, elle donne de la profondeur sans noyer la lame.
+  const accentShape = new THREE.Shape();
+  accentShape.moveTo(0, 0);
+  accentShape.lineTo(0.008, -0.05);
+  accentShape.lineTo(0.006, -1.06);
+  accentShape.lineTo(0.002, -1.2);
+  accentShape.lineTo(-0.003, -1.05);
+  accentShape.lineTo(-0.003, -0.04);
+  accentShape.closePath();
+  const accentGeometry = curveBlade(
+    new THREE.ExtrudeGeometry(accentShape, {
+      depth: 0.042,
+      steps: 1,
+      bevelEnabled: false
+    }),
+    BLADE_LENGTH,
+    BLADE_CURVE
+  );
+  accentGeometry.rotateX(Math.PI / 2);
+  accentGeometry.translate(0.024, -0.021, 0);
+
+  const handleGeometry = new THREE.CylinderGeometry(0.036, 0.042, 0.36, 8);
+  const gripRingGeometry = new THREE.TorusGeometry(0.044, 0.008, 5, 12);
+  const nodeGeometry = new THREE.SphereGeometry(0.016, 6, 4);
+  // Tsuba : barre centrale et deux ailes balayees vers l'arriere, dans la
+  // meme epaisseur que la lame. Des cones vifs donnaient des pointes
+  // blanches qui cassaient la lecture de la silhouette.
+  const guardWingGeometry = new THREE.BoxGeometry(0.135, 0.026, 0.05);
 
   function createSaber(side) {
     const saber = new THREE.Group();
-    saber.position.set(side * 0.34, side < 0 ? 0.03 : -0.03, -0.12);
-    saber.rotation.set(-0.12, side * 0.18, side * 0.12);
+    saber.position.set(side * 0.33, side < 0 ? 0.03 : -0.03, -0.1);
+    saber.rotation.set(-0.1, side * 0.2, side * 0.1);
 
-    const blade = new THREE.Mesh(bladeGeometry, purpleMaterial);
+    const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
     blade.position.z = 0.02;
     blade.renderOrder = 2;
     saber.add(blade);
 
     const bladeGlow = new THREE.Mesh(bladeGeometry, glowMaterial);
     bladeGlow.position.z = 0.02;
-    bladeGlow.scale.set(1.16, 1.045, 1.025);
+    bladeGlow.scale.set(1.2, 1.06, 1.02);
     bladeGlow.renderOrder = 1;
     saber.add(bladeGlow);
 
-    const spine = new THREE.Mesh(spineGeometry, cyanMaterial);
-    spine.position.set(0, 0, -0.55);
-    saber.add(spine);
+    const accent = new THREE.Mesh(accentGeometry, purpleMaterial);
+    accent.position.x = 0.004;
+    accent.renderOrder = 3;
+    saber.add(accent);
 
-    const leftEdge = new THREE.Mesh(edgeGeometry, cyanMaterial);
-    leftEdge.position.set(-0.061, 0, -0.55);
-    saber.add(leftEdge);
-    const rightEdge = leftEdge.clone();
-    rightEdge.position.x = 0.061;
-    saber.add(rightEdge);
+    const edge = new THREE.Mesh(edgeGeometry, edgeMaterial);
+    edge.position.x = -0.016;
+    edge.renderOrder = 4;
+    saber.add(edge);
 
-    const nodePositions = [-0.28, -0.58, -0.88];
-    const energyNodes = nodePositions.map((z) => {
+    // Noeuds d'energie le long du dos, sur la partie la plus courbe.
+    const energyNodes = [-0.3, -0.66, -1.02].map((z) => {
+      const t = Math.min(1, -z / BLADE_LENGTH);
       const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
-      node.position.set(0, 0.052, z);
+      node.position.set(BLADE_CURVE * t * t + 0.03, 0.014, z);
       node.userData.baseScale = 1;
       saber.add(node);
       return node;
     });
 
-    const emitter = new THREE.Mesh(emitterGeometry, darkMaterial);
-    emitter.rotation.x = Math.PI / 2;
-    emitter.position.z = 0.18;
-    saber.add(emitter);
+    const guardBar = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.038, 0.062), darkMaterial);
+    guardBar.position.z = 0.048;
+    saber.add(guardBar);
+    [-1, 1].forEach((direction) => {
+      const wing = new THREE.Mesh(guardWingGeometry, darkMaterial);
+      wing.position.set(direction * 0.1, 0.004, 0.052);
+      wing.rotation.z = direction * -0.3;
+      wing.rotation.y = direction * 0.26;
+      saber.add(wing);
+      // Lisere lumineux sur le dessus de chaque aile.
+      const wingLight = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.007, 0.012), cyanMaterial);
+      wingLight.position.set(direction * 0.1, 0.02, 0.052);
+      wingLight.rotation.z = direction * -0.3;
+      wingLight.rotation.y = direction * 0.26;
+      saber.add(wingLight);
+    });
+    const guardGlow = new THREE.Mesh(new THREE.TorusGeometry(0.046, 0.006, 5, 14), cyanMaterial);
+    guardGlow.position.z = 0.048;
+    saber.add(guardGlow);
 
-    const emitterRing = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.018, 6, 16), cyanMaterial);
-    emitterRing.position.z = 0.105;
-    saber.add(emitterRing);
-    const emitterRingBack = emitterRing.clone();
-    emitterRingBack.position.z = 0.255;
-    saber.add(emitterRingBack);
-
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.075), handleMaterial);
-    guard.position.set(0, 0, 0.29);
-    saber.add(guard);
-    const guardWing = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.24, 3), cyanMaterial);
-    guardWing.rotation.z = Math.PI / 2;
-    guardWing.position.set(0, 0, 0.29);
-    saber.add(guardWing);
-
+    // Poignee minimaliste, deux anneaux et un pommeau conique.
     const handle = new THREE.Mesh(handleGeometry, handleMaterial);
     handle.rotation.x = Math.PI / 2;
-    handle.position.z = 0.48;
+    handle.position.z = 0.26;
     saber.add(handle);
-    [0.36, 0.48, 0.6].forEach((z) => {
+    [0.17, 0.3].forEach((z) => {
       const gripRing = new THREE.Mesh(gripRingGeometry, darkMaterial);
       gripRing.position.z = z;
       saber.add(gripRing);
     });
-
-    const pommel = new THREE.Mesh(pommelGeometry, cyanMaterial);
-    pommel.position.z = 0.72;
+    const pommel = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.09, 6), darkMaterial);
+    pommel.rotation.x = -Math.PI / 2;
+    pommel.position.z = 0.47;
     saber.add(pommel);
+    const pommelLight = new THREE.Mesh(new THREE.SphereGeometry(0.014, 6, 4), cyanMaterial);
+    pommelLight.position.z = 0.51;
+    saber.add(pommelLight);
 
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.34), darkMaterial);
-    arm.position.set(0, -0.02, 0.88);
+    // Main faktice, pour que le sabre paraisse tenu.
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.3), darkMaterial);
+    arm.position.set(0, -0.02, 0.62);
     saber.add(arm);
-    const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.055, 0.12), handleMaterial);
-    knuckle.position.set(0, 0.065, 0.77);
+    const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.05, 0.11), handleMaterial);
+    knuckle.position.set(0, 0.055, 0.53);
     saber.add(knuckle);
+    const knuckleLight = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.008, 0.02), cyanMaterial);
+    knuckleLight.position.set(0, 0.081, 0.53);
+    saber.add(knuckleLight);
 
     saber.userData.energyNodes = energyNodes;
     return saber;
@@ -2330,10 +2940,12 @@ function createAssassinWeapon() {
   group.userData.energyMaterial = purpleMaterial;
   group.userData.accentMaterial = cyanMaterial;
   group.userData.glowMaterial = glowMaterial;
+  group.userData.edgeMaterial = edgeMaterial;
   group.userData.energyNodes = [...leftSaber.userData.energyNodes, ...rightSaber.userData.energyNodes];
   camera.add(group);
   return group;
 }
+
 
 function createWeapon() {
   const group = new THREE.Group();
@@ -2423,22 +3035,23 @@ function createWeapon() {
 
 function applyWeaponVisual(target = weapon) {
   if (!target) return;
-  const isAssassin = equippedClass === 'assassin';
+  const definition = getWeaponDefinition(player.weaponId);
   const shouldShow = state === GAME_STATE.PLAYING || state === GAME_STATE.PAUSED;
-  if (isAssassin) {
-    target.visible = false;
+  // C'est le fireMode de l'arme qui decide de ce qui est en main, pas la
+  // classe : l'Assassin equipe du shuriken tient un armeur, pas des sabres.
+  const showSabers = definition.fireMode === 'slash';
+  if (weapon) weapon.visible = shouldShow && !showSabers;
+  if (assassinWeapon) assassinWeapon.visible = shouldShow && showSabers;
+
+  if (showSabers) {
     if (assassinWeapon) {
-      assassinWeapon.visible = shouldShow;
-      assassinWeapon.userData.energyMaterial?.color.setHex(0xb17cff);
-      assassinWeapon.userData.energyMaterial?.emissive.setHex(0xb17cff);
-      assassinWeapon.userData.accentMaterial?.color.setHex(0x00f5ff);
-      assassinWeapon.userData.accentMaterial?.emissive.setHex(0x00f5ff);
+      assassinWeapon.userData.energyMaterial?.color.setHex(definition.energyColor);
+      assassinWeapon.userData.energyMaterial?.emissive.setHex(definition.energyColor);
+      assassinWeapon.userData.accentMaterial?.color.setHex(definition.accentColor);
+      assassinWeapon.userData.accentMaterial?.emissive.setHex(definition.accentColor);
     }
     return;
   }
-  target.visible = shouldShow;
-  if (assassinWeapon) assassinWeapon.visible = false;
-  const definition = getWeaponDefinition(player.weaponId);
   target.scale.setScalar(definition.visualScale);
   target.userData.energyMaterial?.color.setHex(definition.energyColor);
   target.userData.energyMaterial?.emissive.setHex(definition.energyColor);
@@ -2497,7 +3110,7 @@ function createEnemy(typeKey, level) {
   const map = MAP_DEFINITIONS[currentMapIndex];
   const typeSet = ENEMY_TYPE_SETS[map.enemyTypeSet] || ENEMY_TYPES;
   const template = typeSet[typeKey];
-  const levelScale = 1 + Math.max(0, level - 1) * 0.17;
+  const levelScale = WAVE_CURVES.enemyHealth(level);
   const elite = template.elite && level % 5 === 0;
   const root = new THREE.Group();
   const materials = createEnemyMaterials(template);
@@ -2614,6 +3227,7 @@ function createEnemy(typeKey, level) {
     root,
     body,
     head,
+    headRadius: headSize * template.scale,
     materials,
     hitMeshes,
     legPivots,
@@ -2621,10 +3235,10 @@ function createEnemy(typeKey, level) {
     hp: maxHealth,
     maxHealth,
     speed: template.speed * (0.95 + Math.min(level, 20) * 0.012) * map.enemySpeedMultiplier,
-    damage: template.damage * (1 + Math.max(0, level - 1) * 0.09) * map.enemyDamageMultiplier,
+    damage: template.damage * WAVE_CURVES.enemyDamage(level) * map.enemyDamageMultiplier,
     radius: template.radius * template.scale,
     scale: template.scale,
-    score: Math.round(template.score * (1 + (level - 1) * 0.12) * map.scoreMultiplier),
+    score: Math.round(template.score * (1 + Math.min(level - 1, 40) * 0.08) * map.scoreMultiplier),
     attackCooldown: 0.25 + Math.random() * 0.5,
     flashTime: 0,
     attackPulse: 0,
@@ -2692,6 +3306,7 @@ function spawnEnemy() {
   enemy.root.rotation.y = Math.atan2(player.position.x - position.x, player.position.z - position.z);
   enemies.push(enemy);
   enemyTargets.push(...enemy.hitMeshes);
+  syncRaycastTargets();
 
   const burstColor = enemy.template.color;
   const burst = new THREE.Mesh(
@@ -2714,23 +3329,43 @@ function circleHitsRect(x, z, radius, rect) {
   return dx * dx + dz * dz < radius * radius;
 }
 
+function syncRaycastTargets() {
+  raycastTargets.length = 0;
+  for (let index = 0; index < arenaTargets.length; index += 1) raycastTargets.push(arenaTargets[index]);
+  for (let index = 0; index < enemyTargets.length; index += 1) raycastTargets.push(enemyTargets[index]);
+}
+
 function isBlocked(x, z, radius) {
   const limit = CONFIG.arenaSize / 2 - 0.45;
   if (Math.abs(x) > limit || Math.abs(z) > limit) return true;
-  return obstacles.some((obstacle) => {
+  // Boucle explicite : obstacles.some(closure) allouait une fermeture a chaque
+  // appel, et isBlocked tourne plusieurs centaines de fois par frame.
+  for (let index = 0; index < obstacles.length; index += 1) {
+    const obstacle = obstacles[index];
     if (obstacle.type === 'circle') {
       const dx = x - obstacle.x;
       const dz = z - obstacle.z;
-      return dx * dx + dz * dz < (radius + obstacle.radius) ** 2;
+      const reach = radius + obstacle.radius;
+      if (dx * dx + dz * dz < reach * reach) return true;
+    } else if (circleHitsRect(x, z, radius, obstacle)) {
+      return true;
     }
-    return circleHitsRect(x, z, radius, obstacle);
-  });
+  }
+  return false;
 }
+
+// Resultat reutilise : getNavIndex est appele pour chaque ennemi a chaque
+// frame, et un objet neuf par appel ajouteait ~9 allocations/frame.
+// Les deux appelants lisent les valeurs immediatement, l'aliasing est sur.
+const navIndexResult = { column: 0, row: 0, index: 0 };
 
 function getNavIndex(x, z) {
   const column = THREE.MathUtils.clamp(Math.floor((x + CONFIG.arenaSize / 2) / NAV_CELL_SIZE), 0, NAV_GRID_SIZE - 1);
   const row = THREE.MathUtils.clamp(Math.floor((z + CONFIG.arenaSize / 2) / NAV_CELL_SIZE), 0, NAV_GRID_SIZE - 1);
-  return { column, row, index: row * NAV_GRID_SIZE + column };
+  navIndexResult.column = column;
+  navIndexResult.row = row;
+  navIndexResult.index = row * NAV_GRID_SIZE + column;
+  return navIndexResult;
 }
 
 function getNavCenter(column, row, target = new THREE.Vector3()) {
@@ -2800,24 +3435,26 @@ function rebuildFlowField() {
   }
 }
 
-function getFlowDirection(position, target = new THREE.Vector3()) {
+const flowDirectionTarget = new THREE.Vector3();
+
+function getFlowDirection(position, target = flowDirectionTarget) {
   const currentCell = getNavIndex(position.x, position.z);
   let current = currentCell.index;
   if (!navWalkable[current] || navDistance[current] < 0) {
+    // Case courante non marchable (ennemi plus large qu'une maille) : on
+    // cherche la cellule marchable la plus proche. navCellCenters est deja
+    // pre-alloce, on ne doit surtout pas reconstruire un Vector3 par cellule.
     let nearest = -1;
     let nearestDistance = Infinity;
-    for (let row = 0; row < NAV_GRID_SIZE; row += 1) {
-      for (let column = 0; column < NAV_GRID_SIZE; column += 1) {
-        const index = row * NAV_GRID_SIZE + column;
-        if (!navWalkable[index] || navDistance[index] < 0) continue;
-        const center = getNavCenter(column, row);
-        const dx = center.x - position.x;
-        const dz = center.z - position.z;
-        const distance = dx * dx + dz * dz;
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nearest = index;
-        }
+    for (let index = 0; index < navWalkable.length; index += 1) {
+      if (!navWalkable[index] || navDistance[index] < 0) continue;
+      const center = navCellCenters[index];
+      const dx = center.x - position.x;
+      const dz = center.z - position.z;
+      const distance = dx * dx + dz * dz;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = index;
       }
     }
     if (nearest < 0) return null;
@@ -2864,7 +3501,7 @@ function updatePlayer(delta) {
   player.fireCooldown = Math.max(0, player.fireCooldown - delta);
   player.dashCooldown = Math.max(0, player.dashCooldown - delta);
   player.slashTimer = Math.max(0, player.slashTimer - delta);
-  if (player.classId === 'assassin' && assassinWeapon) {
+  if (assassinWeapon && assassinWeapon.visible) {
     const pulse = 0.5 + Math.sin(elapsed * 7) * 0.5;
     assassinWeapon.userData.energyMaterial.emissiveIntensity = 3.6 + pulse * 1.8 + (player.slashTimer > 0 ? 2.4 : 0);
     assassinWeapon.userData.glowMaterial.opacity = 0.14 + pulse * 0.1 + (player.slashTimer > 0 ? 0.12 : 0);
@@ -2874,7 +3511,19 @@ function updatePlayer(delta) {
     });
   }
   player.abilityCooldown = Math.max(0, player.abilityCooldown - delta);
+  const wasAbilityActive = player.abilityTimer > 0;
   player.abilityTimer = Math.max(0, player.abilityTimer - delta);
+  // Les bonus temporaires doivent retomber Ã  zÃ©ro exactement Ã  l'expiration,
+  // sinon ils survivraient jusqu'Ã  la prochaine activation.
+  if (wasAbilityActive && player.abilityTimer === 0) {
+    player.abilityDamageBonus = 0;
+    player.abilityKillHeal = 0;
+  }
+  if (player.vanishTimer > 0) {
+    player.vanishTimer = Math.max(0, player.vanishTimer - delta);
+    // On masque l'arme en main : c'est le seul signe lisible de l'etat.
+    if (player.vanishTimer === 0) applyWeaponVisual();
+  }
   player.overdriveTimer = Math.max(0, player.overdriveTimer - delta);
   abilityMessageTimer = Math.max(0, abilityMessageTimer - delta);
   player.invulnerable = Math.max(0, player.invulnerable - delta);
@@ -2883,11 +3532,20 @@ function updatePlayer(delta) {
 
   if (player.reloadRemaining > 0) {
     player.reloadRemaining -= delta;
-    ui.reloadStatus.textContent = `RECHARGE // ${Math.max(0, player.reloadRemaining).toFixed(1)}s`;
+    // Ecriture DOM par frame : on passe par le cache du HUD, qui filtre
+    // deja les valeurs identiques. Les deux writers se partageent la cle.
+    const reloadText = `RECHARGE // ${Math.max(0, player.reloadRemaining).toFixed(1)}s`;
+    if (hudCache.reload !== reloadText) {
+      ui.reloadStatus.textContent = reloadText;
+      hudCache.reload = reloadText;
+    }
     if (player.reloadRemaining <= 0) {
       player.reloadRemaining = 0;
       player.ammo = player.magazineSize;
-      ui.reloadStatus.textContent = 'SYSTÈME PRÊT';
+      if (hudCache.reload !== 'SYSTÃˆME PRÃŠT') {
+        ui.reloadStatus.textContent = 'SYSTÃˆME PRÃŠT';
+        hudCache.reload = 'SYSTÃˆME PRÃŠT';
+      }
     }
   }
 
@@ -2921,12 +3579,25 @@ function updatePlayer(delta) {
     player.velocity.multiplyScalar(Math.max(0, 1 - delta * 13));
   }
 
+  const previousX = player.position.x;
+  const previousZ = player.position.z;
   moveEntity(player.position, player.velocity.x * delta, player.velocity.z * delta, CONFIG.playerRadius);
+
+  // PAS D'OMBRE : la frappe voyage avec le dash. On mesure le segment
+  // reellement parcouru (le dash peut etre bloque par un obstacle) et on ne
+  // touche chaque ennemi qu'une fois par esquive.
+  if (player.dashDamage > 0 && player.dashTimer > 0) {
+    applyDashDamage(previousX, previousZ);
+  }
+
   const bob = player.moving ? Math.sin(player.bobTime) * (player.dashTimer > 0 ? 0.018 : 0.035) : 0;
   const shakeX = player.shake * (Math.random() - 0.5) * 0.12;
   const shakeY = player.shake * (Math.random() - 0.5) * 0.12;
   camera.position.set(player.position.x + shakeX, player.position.y + bob + shakeY, player.position.z);
-  camera.rotation.set(player.pitch + player.recoil * 0.012, player.yaw, player.shake * (Math.random() - 0.5) * 0.018, 'YXZ');
+  // 0.012 ne montait le canon que de 0.79 deg au plafond de recoil : le tir
+  // ne se sentait pas. 0.030 donne ~1.8 deg pour le RAIL et ~0.65 deg pour
+  // la SMG, ce qui rend chaque arme identifiable au recoil.
+  camera.rotation.set(player.pitch + player.recoil * 0.03, player.yaw, player.shake * (Math.random() - 0.5) * 0.018, 'YXZ');
   updateWeapon(delta);
 }
 
@@ -2961,7 +3632,8 @@ function updateWeapon(delta) {
 }
 
 function startReload() {
-  if (player.classId === 'assassin') return;
+  // Un sabre n'a pas de chargeur ; le shuriken de l'Assassin en a un.
+  if (getWeaponDefinition(player.weaponId).fireMode === 'slash') return;
   if (state !== GAME_STATE.PLAYING || player.reloadRemaining > 0 || player.ammo >= player.magazineSize) return;
   player.reloadRemaining = player.reloadTime;
   audio.reload();
@@ -3010,18 +3682,22 @@ function spawnAbilityEffect(radius, color) {
 
 function activateAbility() {
   if (state !== GAME_STATE.PLAYING) return;
-  if (player.classId === 'assassin') {
+  const isAssassin = player.classId === 'assassin';
+  // Sans capacitÃ© achetÃ©e, l'Assassin garde son dash : c'est sa seule
+  // ressource de base, elle ne doit pas disparaÃ®tre au rang 0.
+  if (isAssassin && !player.abilityId) {
     activateDash();
     return;
   }
   const ability = getAbilityDefinition(player.abilityId);
-  if (!ability) {
-    abilityMessage = "ACHÈTE UNE CAPACITÉ DANS L'ATELIER";
+  if (!ability || ability.classId !== player.classId) {
+    abilityMessage = "ACHÃˆTE UNE CAPACITÃ‰ DANS L'ATELIER";
     abilityMessageTimer = 1.8;
+    if (isAssassin) activateDash();
     return;
   }
   if (player.abilityCooldown > 0) {
-    abilityMessage = `CAPACITÉ // RECHARGE ${player.abilityCooldown.toFixed(1)}s`;
+    abilityMessage = `CAPACITÃ‰ // RECHARGE ${player.abilityCooldown.toFixed(1)}s`;
     abilityMessageTimer = 0.8;
     return;
   }
@@ -3030,6 +3706,7 @@ function activateAbility() {
   player.abilityTimer = ability.duration;
   const center = player.position;
   const radius = ability.radius || 0;
+  const hex = new THREE.Color(ability.color).getHex();
 
   if (ability.id === 'nova') {
     [...enemies].forEach((enemy) => {
@@ -3040,8 +3717,8 @@ function activateAbility() {
         damageEnemy(enemy, ability.damage, false, false);
       }
     });
-    spawnAbilityEffect(radius, new THREE.Color(ability.color).getHex());
-    abilityMessage = 'NOVA // DÉGÂTS DE ZONE';
+    spawnAbilityEffect(radius, hex);
+    abilityMessage = 'NOVA // DÃ‰GÃ‚TS DE ZONE';
   } else if (ability.id === 'cryo') {
     [...enemies].forEach((enemy) => {
       if (enemy.dead) return;
@@ -3049,24 +3726,86 @@ function activateAbility() {
       const dz = enemy.root.position.z - center.z;
       if (dx * dx + dz * dz <= radius * radius) applyWeaponStatus(enemy, ability);
     });
-    spawnAbilityEffect(radius, new THREE.Color(ability.color).getHex());
+    spawnAbilityEffect(radius, hex);
     abilityMessage = 'CRYO // HOSTILES RALENTIS';
   } else if (ability.id === 'aegis') {
-    spawnAbilityEffect(4.5, new THREE.Color(ability.color).getHex());
+    spawnAbilityEffect(4.5, hex);
     abilityMessage = 'AEGIS // BOUCLIER ACTIF';
   } else if (ability.id === 'overload') {
     player.overdriveTimer = ability.duration;
-    spawnAbilityEffect(3.5, new THREE.Color(ability.color).getHex());
-    abilityMessage = 'OVERDRIVE // ARME SURCHARGÉE';
+    spawnAbilityEffect(3.5, hex);
+    abilityMessage = 'OVERDRIVE // ARME SURCHARGÃ‰E';
+  } else if (ability.id === 'shadowStep') {
+    // Reset du dash : l'Assassin peut s'enfuir en boucle tant que la
+    // capacite dure, ce qui en fait le vrai outil de survie du melee.
+    player.dashCooldown = 0;
+    player.abilityDamageBonus = ability.damageMultiplier - 1;
+    player.abilityKillHeal = 0;
+    spawnAbilityEffect(3.2, hex);
+    abilityMessage = 'PAS OMBRE // DASH LIBRE';
+  } else if (ability.id === 'shadowVeilField') {
+    player.vanishTimer = ability.duration;
+    player.critPending = true;
+    player.abilityDamageBonus = 0;
+    spawnAbilityEffect(2.6, hex);
+    abilityMessage = 'VOILE // INVISIBLE';
+  } else if (ability.id === 'shadowRiptide') {
+    player.abilityKillHeal = ability.killHeal;
+    player.abilityDamageBonus = ability.damageMultiplier - 1;
+    spawnAbilityEffect(4, hex);
+    abilityMessage = 'SANG-DÃ‰CHIRÃ‰ // VAMPIRE';
+  } else if (ability.id === 'shadowHourglass') {
+    let healthiest = null;
+    [...enemies].forEach((enemy) => {
+      if (enemy.dead) return;
+      const dx = enemy.root.position.x - center.x;
+      const dz = enemy.root.position.z - center.z;
+      if (dx * dx + dz * dz > radius * radius) return;
+      applyWeaponStatus(enemy, ability);
+      if (!healthiest || enemy.hp > healthiest.hp) healthiest = enemy;
+    });
+    if (healthiest) damageEnemy(healthiest, ability.damage, false, false);
+    spawnAbilityEffect(radius * 0.6, hex);
+    abilityMessage = 'HEURE DE CENDRE // TEMPS RALENTI';
   }
 
   abilityMessageTimer = 1.5;
   audio.ability(ability.id);
 }
 
+// La hitbox cylindrique englobe la tete, donc le tri par distance de
+// intersectObjects la touche toujours avant le mesh de tete : le flag
+// userData.headshot n'est jamais lu. On tranche donc par geometrie, avec un
+// test rayon/sphere sur la tete, indifferent a l'ordre des intersections.
+// Le centre est legerement remonte et le rayon resserre : le torse monte
+// jusqu'a y=1.53 alors que la tete descend a y=1.19, donc une zone trop large
+// compterait les tirs aux epaules comme des headshots.
+const headTestCenter = new THREE.Vector3();
+const headTestOffset = new THREE.Vector3();
+// Normale d'impact enemy : orientÃ©e de l'ennemi vers le point touchÃ©, ce qui
+// donne une gerbe qui part vers l'extÃ©rieur sans dependre de face.normal
+// (qui est en espace local de l'objet, non transformÃ©).
+const impactNormal = new THREE.Vector3();
+
+function isHeadshotHit(enemy, hitDistance) {
+  if (!enemy.head || !enemy.head.parent) return false;
+  enemy.head.getWorldPosition(headTestCenter);
+  const radius = enemy.headRadius * 0.85;
+  headTestCenter.y += enemy.headRadius * 0.25;
+  headTestOffset.copy(headTestCenter).sub(raycaster.ray.origin);
+  const projection = headTestOffset.dot(raycaster.ray.direction);
+  if (projection < 0) return false;
+  if (projection > hitDistance + enemy.radius * 0.75 + radius) return false;
+  const perpendicularSq = headTestOffset.lengthSq() - projection * projection;
+  return perpendicularSq <= radius * radius;
+}
+
 function fireWeapon() {
   if (state !== GAME_STATE.PLAYING || player.fireCooldown > 0 || player.reloadRemaining > 0) return;
-  if (player.classId === 'assassin') {
+  const weaponDefinition = getWeaponDefinition(player.weaponId);
+  // Le branchement se fait sur le fireMode de l'arme et non sur la classe :
+  // l'Assassin peut equiper le shuriken, qui est lance a distance.
+  if (weaponDefinition.fireMode === 'slash') {
     slashAttack();
     return;
   }
@@ -3075,13 +3814,13 @@ function fireWeapon() {
     return;
   }
 
-  const weaponDefinition = getWeaponDefinition(player.weaponId);
   const overloadActive = player.overdriveTimer > 0;
   const overloadDefinition = getAbilityDefinition('overload');
   const fireRateMultiplier = overloadActive ? overloadDefinition?.fireRateMultiplier || 1 : 1;
-  const damageMultiplier = overloadActive ? overloadDefinition?.damageMultiplier || 1 : 1;
+  const damageMultiplier = (overloadActive ? overloadDefinition?.damageMultiplier || 1 : 1)
+    * (1 + (player.abilityDamageBonus || 0));
   const recoilKick = player.weaponId === 'rail' ? 1.05 : player.weaponId === 'scatter' ? 0.9 : player.weaponId === 'smg' ? 0.38 : 0.7;
-  const shakeAmount = player.weaponId === 'rail' ? 0.2 : player.weaponId === 'scatter' ? 0.18 : 0.11;
+  const shakeAmount = player.weaponId === 'rail' ? 0.2 : player.weaponId === 'scatter' ? 0.18 : player.weaponId === 'smg' ? 0.06 : player.weaponId === 'plasma' ? 0.16 : 0.11;
   player.ammo -= 1;
   shotsFired += 1;
   player.fireCooldown = 1 / (player.fireRate * fireRateMultiplier);
@@ -3108,7 +3847,7 @@ function fireWeapon() {
     const spreadY = (Math.random() * 2 - 1) * spread;
     raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), camera);
     raycaster.far = player.weaponRange || CONFIG.interactionRange;
-    const intersections = raycaster.intersectObjects([...arenaTargets, ...enemyTargets], false);
+    const intersections = raycaster.intersectObjects(raycastTargets, false);
     const endPoint = raycaster.ray.at(player.weaponRange || CONFIG.interactionRange, new THREE.Vector3());
     let remainingTargets = player.pierce + 1;
     const hitEnemies = new Set();
@@ -3125,10 +3864,18 @@ function fireWeapon() {
       if (enemy && !enemy.dead && !hitEnemies.has(enemy)) {
         hitEnemies.add(enemy);
         remainingTargets -= 1;
-        const headshot = Boolean(intersection.object.userData.headshot);
+        const headshot = Boolean(intersection.object.userData.headshot) || isHeadshotHit(enemy, intersection.distance);
+        const headshotMultiplier = (weaponDefinition.headshotMultiplier || 1.65) + (player.headshotBonus || 0);
         applyWeaponStatus(enemy, weaponDefinition);
-        damageEnemy(enemy, player.damage * damageMultiplier * (headshot ? (weaponDefinition.headshotMultiplier || 1.65) : 1), headshot);
+        damageEnemy(enemy, player.damage * damageMultiplier * (headshot ? headshotMultiplier : 1), headshot);
         endPoint.copy(intersection.point);
+        // Avant, un tir qui touchait un ennemi ne produisait aucune gerbe :
+        // le seul retour etait le flash global du modele. La pastille de
+        // touche devient ici un feedback local, et l'or reserved au headshot.
+        impactNormal.copy(intersection.point).sub(enemy.root.position);
+        impactNormal.y = 0;
+        if (impactNormal.lengthSq() < 0.0001) impactNormal.set(0, 1, 0);
+        spawnImpact(intersection.point, impactNormal, headshot ? 0xfff0a6 : weaponDefinition.tracerColor, headshot ? 7 : 4);
       }
     });
 
@@ -3142,6 +3889,7 @@ function fireWeapon() {
 
 function slashAttack() {
   if (player.fireCooldown > 0) return;
+  const weaponDefinition = getWeaponDefinition(player.weaponId);
   player.fireCooldown = 1 / player.fireRate;
   player.slashTimer = 0.28;
   player.recoil = Math.min(1, player.recoil + 0.28);
@@ -3149,11 +3897,13 @@ function slashAttack() {
   shotsFired += 1;
   audio.slash();
 
+  const arc = player.slashArc || 0.34;
+  const visualRadius = weaponDefinition.slashVisual || 1.35;
   const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const slashCenter = player.position.clone().addScaledVector(forward, 1.25);
-  const slashColor = 0xb17cff;
+  const slashColor = weaponDefinition.energyColor ?? 0xb17cff;
   const slash = new THREE.Mesh(
-    new THREE.TorusGeometry(1.35, 0.045, 6, 28, Math.PI * 0.72),
+    new THREE.TorusGeometry(visualRadius, 0.045, 6, 28, Math.PI * 0.72),
     new THREE.MeshBasicMaterial({ color: slashColor, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })
   );
   slash.position.copy(slashCenter);
@@ -3168,10 +3918,18 @@ function slashAttack() {
     toEnemy.y = 0;
     const distance = toEnemy.length();
     if (distance > player.weaponRange + enemy.radius) continue;
-    if (distance > 0.001 && toEnemy.normalize().dot(forward) < 0.25) continue;
-    const executionMultiplier = player.executionBonus > 0 && enemy.hp <= enemy.maxHealth * 0.3 ? player.executionBonus : 1;
-    const damage = player.damage * (hitCount === 0 ? 1 : 0.75) * executionMultiplier;
-    damageEnemy(enemy, damage, false);
+    if (distance > 0.001 && toEnemy.normalize().dot(forward) < arc) continue;
+    const executionMultiplier = player.executionBonus > 1 && enemy.hp <= enemy.maxHealth * 0.3 ? player.executionBonus : 1;
+    // VOILE SOMBRE : la frappe qui suit l'invisibilite est un headshot
+    // garanti, quelle que soit la distance ou l'angle.
+    const guaranteed = player.critPending;
+    const damage = player.damage
+      * (1 + (player.abilityDamageBonus || 0))
+      * (hitCount === 0 ? 1 : 0.75)
+      * executionMultiplier
+      * (guaranteed ? 2.2 : 1);
+    player.critPending = false;
+    damageEnemy(enemy, damage, guaranteed);
     hitCount += 1;
   }
   if (hitCount > 0) {
@@ -3181,6 +3939,39 @@ function slashAttack() {
     window.setTimeout(() => ui.crosshair.classList.remove('hit'), 180);
   } else {
     spawnImpact(slashCenter, new THREE.Vector3(0, 1, 0), slashColor, 3);
+  }
+}
+
+// Degats de la frappe traversante du PAS D'OMBRE. Le segment est teste en
+// projection : un ennemi est touche s'il est dans le cylindre du segment,
+// ce qui evite de dependre de la frequence d'image. Le Set garantit qu'un
+// ennemi ne subit qu'un seul coup par esquive, alors que applyDashDamage est
+// appele a chaque frame pendant les 0,2 s du dash.
+const dashHitSet = new Set();
+function applyDashDamage(fromX, fromZ) {
+  const toX = player.position.x;
+  const toZ = player.position.z;
+  const segmentX = toX - fromX;
+  const segmentZ = toZ - fromZ;
+  const lengthSq = segmentX * segmentX + segmentZ * segmentZ;
+  if (lengthSq < 1e-6) return;
+  for (let index = 0; index < enemies.length; index += 1) {
+    const enemy = enemies[index];
+    if (enemy.dead || dashHitSet.has(enemy)) continue;
+    const dx = enemy.root.position.x - fromX;
+    const dz = enemy.root.position.z - fromZ;
+    let t = (dx * segmentX + dz * segmentZ) / lengthSq;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    const closestX = fromX + segmentX * t;
+    const closestZ = fromZ + segmentZ * t;
+    const offsetX = enemy.root.position.x - closestX;
+    const offsetZ = enemy.root.position.z - closestZ;
+    const reach = enemy.radius + 1.1;
+    if (offsetX * offsetX + offsetZ * offsetZ > reach * reach) continue;
+    const executionMultiplier = player.executionBonus > 1 && enemy.hp <= enemy.maxHealth * 0.3 ? player.executionBonus : 1;
+    dashHitSet.add(enemy);
+    damageEnemy(enemy, player.dashDamage * executionMultiplier, false);
   }
 }
 
@@ -3196,8 +3987,9 @@ function activateDash() {
   if (direction.lengthSq() < 0.01) direction.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   player.dashDirection.copy(direction.normalize());
   player.dashTimer = 0.2;
+  dashHitSet.clear();
   player.dashCooldown = player.dashCooldownDuration;
-  player.invulnerable = Math.max(player.invulnerable, 0.24 + (player.upgrades.shadowVeil || 0) * 0.035);
+  player.invulnerable = Math.max(player.invulnerable, player.dashInvulnerability || 0.22);
   player.shake = Math.min(0.8, player.shake + 0.2);
   audio.dash();
   const trail = new THREE.Mesh(
@@ -3218,22 +4010,31 @@ function createTracer(start, end, color) {
   tracers.push({ line, life: 0.075, maxLife: 0.075 });
 }
 
+// Les dÃ©bris nÃ©cessitent un matÃ©riau par particule (le fondu est indÃ©pendant),
+// mais on recycle les matÃ©riaux au lieu de les allouer et dÃ©truire en boucle.
+function acquireDebrisMaterial(color, additive) {
+  const material = debrisMaterialPool.pop() || new THREE.MeshBasicMaterial();
+  material.color.set(color);
+  material.transparent = true;
+  material.opacity = additive ? 0.88 : 1;
+  material.blending = additive ? THREE.AdditiveBlending : THREE.NormalBlending;
+  material.depthWrite = !additive;
+  return material;
+}
+
+function releaseDebrisMaterial(material) {
+  if (debrisMaterialPool.length < 256) debrisMaterialPool.push(material);
+  else material.dispose();
+}
+
 function spawnImpact(position, normal, color, count) {
   count = Math.max(1, Math.round(count * PERFORMANCE_PROFILE.particleScale));
   const worldNormal = normal.clone();
   if (worldNormal.lengthSq() < 0.001 || !Number.isFinite(worldNormal.x)) worldNormal.set(0, 1, 0);
   worldNormal.normalize();
   for (let i = 0; i < count; i += 1) {
-    const mesh = new THREE.Mesh(
-      new THREE.TetrahedronGeometry(0.035 + Math.random() * 0.035),
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.88,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      })
-    );
+    const mesh = new THREE.Mesh(sharedDebrisGeometry, acquireDebrisMaterial(color, true));
+    mesh.scale.setScalar(0.035 + Math.random() * 0.035);
     mesh.position.copy(position);
     scene.add(mesh);
     const velocity = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5)
@@ -3287,10 +4088,8 @@ function killEnemy(enemy) {
   ripples.push({ mesh: burst, life: 0.45, maxLife: 0.45, startScale: 0.6, endScale: 2.2 * enemy.scale });
 
   for (let i = 0; i < Math.max(5, Math.round(11 * PERFORMANCE_PROFILE.particleScale)); i += 1) {
-    const mesh = new THREE.Mesh(
-      new THREE.TetrahedronGeometry(0.045 + Math.random() * 0.08),
-      new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0xffffff : color })
-    );
+    const mesh = new THREE.Mesh(sharedDebrisGeometry, acquireDebrisMaterial(i % 3 === 0 ? 0xffffff : color, false));
+    mesh.scale.setScalar(0.045 + Math.random() * 0.08);
     mesh.position.copy(deathPosition);
     scene.add(mesh);
     const velocity = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.85 + 0.1, Math.random() - 0.5)
@@ -3299,8 +4098,11 @@ function killEnemy(enemy) {
     particles.push({ mesh, velocity, life: 0.45 + Math.random() * 0.35, maxLife: 0.8 });
   }
 
-  if (player.classId === 'assassin' && player.killHeal > 0) {
-    player.health = Math.min(player.maxHealth, player.health + player.killHeal);
+  // Le soin par elimination vient de l'upgrade Sang d'Ombre, et de la
+  // capacite Sang-dechire quand elle est active.
+  const lifesteal = (player.killHeal || 0) + (player.abilityKillHeal || 0);
+  if (lifesteal > 0) {
+    player.health = Math.min(player.maxHealth, player.health + lifesteal);
   }
   const index = enemies.indexOf(enemy);
   if (index >= 0) enemies.splice(index, 1);
@@ -3308,6 +4110,7 @@ function killEnemy(enemy) {
     const targetIndex = enemyTargets.indexOf(mesh);
     if (targetIndex >= 0) enemyTargets.splice(targetIndex, 1);
   });
+  syncRaycastTargets();
   scene.remove(enemy.root);
   disposeEnemy(enemy);
 }
@@ -3315,8 +4118,14 @@ function killEnemy(enemy) {
 function damagePlayer(amount) {
   if (state !== GAME_STATE.PLAYING || player.invulnerable > 0) return;
   const aegis = player.abilityId === 'aegis' && player.abilityTimer > 0 ? getAbilityDefinition('aegis') : null;
-  const damageReduction = Math.max(player.damageReduction, aegis?.damageReduction || 0);
-  const actualDamage = Math.max(1, amount * (1 - damageReduction));
+  // VOILE SOMBRE : l'invisibilite n'est pas cosmeticque, elle divise les
+  // degats encaisses par deux.
+  const vanishFactor = player.vanishTimer > 0 ? 0.5 : 1;
+  const damageReduction = Math.min(
+    UPGRADE_VALUES.reductionCap,
+    Math.max(player.damageReduction, aegis?.damageReduction || 0)
+  );
+  const actualDamage = Math.max(1, amount * (1 - damageReduction) * vanishFactor);
   damageTaken += actualDamage;
   player.health = Math.max(0, player.health - actualDamage);
   player.invulnerable = 0.16;
@@ -3325,6 +4134,14 @@ function damagePlayer(amount) {
   audio.hurt();
   if (player.health <= 0) endGame();
 }
+
+// Vecteurs de travail reutilises par updateEnemies : le code allouait un
+// Vector3 par ennemi et par paire d'ennemis, soit plusieurs milliers
+// d'allocations par seconde uniquement pour des calculs intermediaires.
+// enemyCount est plafonne a 9, la separation O(n^2) reste negligeable.
+const scratchToPlayer = new THREE.Vector3();
+const scratchMovement = new THREE.Vector3();
+const scratchAway = new THREE.Vector3();
 
 function updateEnemies(delta) {
   navTimer -= delta;
@@ -3352,34 +4169,34 @@ function updateEnemies(delta) {
       if (enemy.burnTimer === 0) enemy.burnDamage = 0;
     }
 
-    const toPlayer = new THREE.Vector3().subVectors(player.position, enemy.root.position);
-    toPlayer.y = 0;
-    const distance = toPlayer.length();
-    if (distance > 0.001) toPlayer.normalize();
+    scratchToPlayer.subVectors(player.position, enemy.root.position);
+    scratchToPlayer.y = 0;
+    const distance = scratchToPlayer.length();
+    if (distance > 0.001) scratchToPlayer.normalize();
     const attackDistance = enemy.radius * 1.45 + 0.5;
     const attackSpeed = distance > attackDistance ? enemy.speed * enemy.slowMultiplier : 0;
     if (attackSpeed > 0) {
       const flowDirection = getFlowDirection(enemy.root.position);
-      const movementDirection = (flowDirection || toPlayer).clone();
-      movementDirection.lerp(toPlayer, 0.12).normalize();
-      movementDirection.multiplyScalar(attackSpeed * delta);
-      moveEntity(enemy.root.position, movementDirection.x, movementDirection.z, enemy.radius);
+      scratchMovement.copy(flowDirection || scratchToPlayer);
+      scratchMovement.lerp(scratchToPlayer, 0.12).normalize();
+      scratchMovement.multiplyScalar(attackSpeed * delta);
+      moveEntity(enemy.root.position, scratchMovement.x, scratchMovement.z, enemy.radius);
     }
 
     for (let j = 0; j < enemies.length; j += 1) {
       if (i === j) continue;
       const other = enemies[j];
-      const away = new THREE.Vector3().subVectors(enemy.root.position, other.root.position);
-      away.y = 0;
-      const separationDistance = away.length();
+      scratchAway.subVectors(enemy.root.position, other.root.position);
+      scratchAway.y = 0;
+      const separationDistance = scratchAway.length();
       const desired = (enemy.radius + other.radius) * 0.72;
       if (separationDistance > 0.001 && separationDistance < desired) {
-        away.multiplyScalar(1 / separationDistance).multiplyScalar((desired - separationDistance) * delta * 2.2);
-        moveEntity(enemy.root.position, away.x, away.z, enemy.radius);
+        scratchAway.multiplyScalar(1 / separationDistance).multiplyScalar((desired - separationDistance) * delta * 2.2);
+        moveEntity(enemy.root.position, scratchAway.x, scratchAway.z, enemy.radius);
       }
     }
 
-    const targetYaw = Math.atan2(toPlayer.x, toPlayer.z);
+    const targetYaw = Math.atan2(scratchToPlayer.x, scratchToPlayer.z);
     const currentYaw = enemy.root.rotation.y;
     let yawDelta = targetYaw - currentYaw;
     while (yawDelta > Math.PI) yawDelta -= Math.PI * 2;
@@ -3389,7 +4206,7 @@ function updateEnemies(delta) {
     enemy.attackCooldown -= delta;
     enemy.attackPulse = Math.max(0, enemy.attackPulse - delta * 2.2);
     if (distance < attackDistance && enemy.attackCooldown <= 0) {
-      const baseAttackCooldown = enemy.elite ? 1.15 : Math.max(0.85, 1.45 - wave * 0.018);
+      const baseAttackCooldown = enemy.elite ? 1.15 : WAVE_CURVES.attackCooldown(wave);
       const mapAttackMultiplier = MAP_DEFINITIONS[currentMapIndex].attackCooldownMultiplier;
       enemy.attackCooldown = baseAttackCooldown * mapAttackMultiplier;
       enemy.attackPulse = 1;
@@ -3416,21 +4233,26 @@ function updateEnemies(delta) {
 
 function updateWave(delta) {
   if (state !== GAME_STATE.PLAYING) return;
-  const maxConcurrent = Math.min(9, 4 + Math.floor(wave * 0.7));
+  const maxConcurrent = WAVE_CURVES.maxConcurrent(wave);
   spawnTimer -= delta;
   if (waveSpawned < waveTotal && enemies.length < maxConcurrent && spawnTimer <= 0) {
     spawnEnemy();
     waveSpawned += 1;
-    spawnTimer = Math.max(0.34, 1.05 - wave * 0.055) * (0.75 + Math.random() * 0.5);
+    spawnTimer = WAVE_CURVES.spawnInterval(wave) * (0.75 + Math.random() * 0.5);
   }
   const remaining = waveTotal - waveSpawned + enemies.length;
-  ui.enemyValue.textContent = String(remaining).padStart(2, '0');
+  // Compteur d'ennemis : change rarement, on evite une ecriture DOM par frame.
+  const remainingText = String(remaining).padStart(2, '0');
+  if (hudCache.enemies !== remainingText) {
+    ui.enemyValue.textContent = remainingText;
+    hudCache.enemies = remainingText;
+  }
   if (waveSpawned >= waveTotal && enemies.length === 0) completeWave();
 }
 
 function startWave() {
   wave += 1;
-  waveTotal = 4 + wave * 2 + Math.floor(wave * wave * 0.08);
+  waveTotal = WAVE_CURVES.total(wave);
   waveSpawned = 0;
   spawnTimer = 0.4;
   state = GAME_STATE.PLAYING;
@@ -3450,20 +4272,27 @@ function startWave() {
 
 function completeWave() {
   if (state !== GAME_STATE.PLAYING) return;
+  const choices = getUpgradeChoices();
+  if (choices.length === 0) {
+    // Tous les modules sont au niveau maximum : on enchaÃ®ne sur la vague
+    // suivante plutÃ´t que d'afficher un Ã©cran vide oÃ¹ aucun clic ne fait rien.
+    ui.waveBanner.classList.remove('show');
+    startWave();
+    return;
+  }
   state = GAME_STATE.UPGRADE;
   keys.clear();
   if (document.pointerLockElement) document.exitPointerLock();
   ui.waveBanner.classList.remove('show');
-  showUpgradeChoices();
+  showUpgradeChoices(choices);
 }
 
 function getUpgradeChoices() {
-  const isAssassin = player.classId === 'assassin';
+  const classId = player.classId;
   const available = Object.entries(UPGRADE_DEFINITIONS)
     .filter(([key, definition]) => {
       if (player.upgrades[key] >= definition.max) return false;
-      if (definition.assassinOnly && !isAssassin) return false;
-      if (definition.rangerOnly && isAssassin) return false;
+      if (definition.classId !== 'shared' && definition.classId !== classId) return false;
       return true;
     })
     .map(([key, definition]) => ({ key, ...definition }));
@@ -3471,30 +4300,30 @@ function getUpgradeChoices() {
     const j = Math.floor(Math.random() * (i + 1));
     [available[i], available[j]] = [available[j], available[i]];
   }
-  while (available.length < 3) {
-    const fallbackKey = isAssassin ? 'shadowDamage' : 'damage';
-    available.push({ key: fallbackKey, ...UPGRADE_DEFINITIONS[fallbackKey] });
-  }
+  // Aucun remplissage de secours : une carte dÃ©jÃ  au niveau maximum ferait
+  // sortir chooseUpgrade sans rien appliquer, laissant l'Ã©cran bloquÃ© sans issue.
   return available.slice(0, 3);
 }
 
-function showUpgradeChoices() {
+function showUpgradeChoices(choices) {
   ui.completedWave.textContent = String(wave).padStart(2, '0');
   ui.upgradeOptions.innerHTML = '';
-  getUpgradeChoices().forEach((upgrade, index) => {
+  choices.forEach((upgrade, index) => {
     const currentLevel = player.upgrades[upgrade.key];
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `upgrade-card${upgrade.assassinOnly ? ' assassin-upgrade' : ''}`;
+    button.className = `upgrade-card${upgrade.classId && upgrade.classId !== 'shared' ? ` ${upgrade.classId}-upgrade` : ''}`;
     button.style.setProperty('--card-color', upgrade.color);
-    const pips = Array.from({ length: upgrade.max }, (_, pipIndex) => `<i class="${pipIndex <= currentLevel ? 'active' : ''}"></i>`).join('');
+    const pips = Array.from({ length: upgrade.max }, (_, pipIndex) => `<i class="${pipIndex < currentLevel ? 'active' : ''}"></i>`).join('');
+    const origin = upgrade.classId === 'ranger' ? 'RANGER'
+      : upgrade.classId === 'assassin' ? 'ASSASSIN' : 'COMMUN';
     button.innerHTML = `
       <span class="card-index">OPT_0${index + 1} // ${upgrade.short}</span>
       <span class="card-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${upgrade.icon}</svg></span>
-      <span class="card-rarity">${upgrade.assassinOnly ? 'AMÉLIORATION // ASSASSIN' : `AMÉLIORATION // NIVEAU ${currentLevel + 1}`}</span>
+      <span class="card-rarity">${origin} // NIVEAU ${currentLevel + 1}</span>
       <h3>${upgrade.name}</h3>
       <p>${upgrade.description}</p>
-      <span class="card-footer"><span class="level-pips">${pips}</span><span>INSTALLER →</span></span>
+      <span class="card-footer"><span class="level-pips">${pips}</span><span>INSTALLER â†’</span></span>
     `;
     button.addEventListener('click', () => chooseUpgrade(upgrade.key));
     ui.upgradeOptions.appendChild(button);
@@ -3507,56 +4336,24 @@ function showUpgradeChoices() {
 function chooseUpgrade(key) {
   if (state !== GAME_STATE.UPGRADE) return;
   const definition = UPGRADE_DEFINITIONS[key];
-  if (!definition || player.upgrades[key] >= definition.max) return;
-  player.upgrades[key] += 1;
-  switch (key) {
-    case 'damage':
-      player.damage *= 1.32;
-      break;
-    case 'fireRate':
-      player.fireRate *= 1.24;
-      break;
-    case 'shadowDamage':
-      player.damage *= 1.22;
-      break;
-    case 'shadowFlurry':
-      player.fireRate *= 1.18;
-      break;
-    case 'shadowVeil':
-      player.dashCooldownDuration = Math.max(1.2, player.dashCooldownDuration * 0.82);
-      break;
-    case 'shadowBlood':
-      player.killHeal += 5;
-      break;
-    case 'shadowExecution':
-      player.executionBonus = 1 + (player.upgrades.shadowExecution || 0) * 0.35;
-      break;
-    case 'magazine':
-      player.magazineSize += 8;
-      break;
-    case 'reload':
-      player.reloadTime = Math.max(0.42, player.reloadTime * 0.76);
-      break;
-    case 'armor':
-      player.maxHealth += 28;
-      player.health = Math.min(player.maxHealth, player.health + 28);
-      break;
-    case 'speed':
-      player.speed *= 1.13;
-      break;
-    case 'pierce':
-      player.pierce += 1;
-      break;
-    case 'repair':
-      player.regen += 1.2;
-      break;
-    case 'stabilize':
-      player.damageReduction = Math.min(0.68, player.damageReduction + 0.18);
-      break;
-    default:
-      break;
+  // Filet de sÃ©curitÃ© : un module au maximum ne doit jamais laisser l'Ã©cran
+  // d'amÃ©lioration ouvert, on enchaÃ®ne donc sur la vague suivante.
+  if (!definition || player.upgrades[key] >= definition.max) {
+    state = GAME_STATE.PLAYING;
+    ui.upgrade.classList.remove('active');
+    startWave();
+    return;
   }
-
+  player.upgrades[key] += 1;
+  const previousMaxHealth = player.maxHealth;
+  // Toutes les statistiques derivees sont recalculees depuis les bases : plus
+  // aucune multiplication en cascade d'un niveau a l'autre.
+  applyUpgradeStats();
+  // L'armure soigne du meme coup que la progression elle-meme.
+  if (key === 'armor' || key === 'shadowPoise') {
+    player.health = Math.min(player.maxHealth, player.health + (player.maxHealth - previousMaxHealth));
+  }
+  if (key === 'shadowVeil') player.dashCooldown = 0;
   player.ammo = player.magazineSize;
   player.reloadRemaining = 0;
   ui.upgrade.classList.remove('active');
@@ -3615,15 +4412,15 @@ function endGame() {
   ui.finalKills.textContent = String(kills);
   ui.finalScore.textContent = score.toLocaleString('fr-FR');
   ui.finalReward.textContent = `+${formatCredits(lastReward.total)} CR`;
-  ui.performanceRating.textContent = `PERFORMANCE // ${lastReward.rating} // ${Math.round(lastReward.accuracy * 100)}% PRÉCISION`;
+  ui.performanceRating.textContent = `PERFORMANCE // ${lastReward.rating} // ${Math.round(lastReward.accuracy * 100)}% PRÃ‰CISION`;
   ui.rewardBreakdown.textContent = [
     `VAGUE +${formatCredits(lastReward.waveCredits)}`,
-    `ÉLIMINATIONS +${formatCredits(lastReward.eliminationCredits)}`,
+    `Ã‰LIMINATIONS +${formatCredits(lastReward.eliminationCredits)}`,
     `SCORE +${formatCredits(lastReward.scoreCredits)}`,
-    `PRÉCISION +${formatCredits(lastReward.accuracyCredits)}`,
+    `PRÃ‰CISION +${formatCredits(lastReward.accuracyCredits)}`,
     `HEADSHOTS +${formatCredits(lastReward.headshotCredits)}`,
     `SURVIE +${formatCredits(lastReward.survivalCredits)}`,
-    `EFFICACITÉ +${formatCredits(lastReward.efficiencyCredits)}`
+    `EFFICACITÃ‰ +${formatCredits(lastReward.efficiencyCredits)}`
   ].join(' // ');
   ui.bestScore.textContent = `MEILLEUR SCORE // ${bestScore.toLocaleString('fr-FR')}`;
   updateCreditsUI();
@@ -3657,10 +4454,11 @@ function returnToMenu() {
   damageFlashTimer = 0;
   waveBannerTimer = 0;
   ui.damageFlash.style.opacity = '0';
+  hudCache.damageFlash = '0';
   updateCreditsUI();
   updateMapUI();
   updateClassUI();
-  showSaveStatus('SESSION SAUVEGARDÉE // MENU', 'success');
+  showSaveStatus('SESSION SAUVEGARDÃ‰E // MENU', 'success');
 }
 
 function startNewGame() {
@@ -3712,38 +4510,43 @@ function updateHUD() {
     ui.ammoValue.textContent = ammo;
     hudCache.ammo = ammo;
   }
-  if (ui.reserveValue && hudCache.reserve !== '∞') {
-    ui.reserveValue.textContent = '∞';
-    hudCache.reserve = '∞';
+  if (ui.reserveValue && hudCache.reserve !== 'âˆž') {
+    ui.reserveValue.textContent = 'âˆž';
+    hudCache.reserve = 'âˆž';
   }
-  const weaponName = isAssassin ? 'SABRES // ASSASSIN' : getWeaponDefinition(player.weaponId).name;
+  // Le HUD lit desormais la definition reelle de l'arme : avant il affichait
+  // un libelle code en dur, ce qui cachait le fait que l'Assassin peut
+  // Ã©quiper une arme Ã  distance comme le shuriken.
+  const weaponDefinition = getWeaponDefinition(player.weaponId);
+  const weaponName = weaponDefinition.name;
   if (hudCache.weaponName !== weaponName) {
     ui.weaponName.textContent = weaponName;
     hudCache.weaponName = weaponName;
   }
-  const weaponStatsText = isAssassin
-    ? `DMG ${Math.round(player.damage)} // CAD ${player.fireRate.toFixed(1)} // CORPS À CORPS`
+  const weaponStatsText = weaponDefinition.fireMode === 'slash'
+    ? `DMG ${Math.round(player.damage)} // CAD ${player.fireRate.toFixed(1)} // ${player.slashTargets} CIBLES`
     : `DMG ${Math.round(player.damage)} // CAD ${player.fireRate.toFixed(1)} // ${Math.round(player.weaponRange)} M${player.weaponPellets > 1 ? ` // ${player.weaponPellets} PROJ` : ''}`;
   if (hudCache.weaponStats !== weaponStatsText) {
     ui.weaponStatsHud.textContent = weaponStatsText;
     hudCache.weaponStats = weaponStatsText;
   }
 
-  const ability = isAssassin ? null : getAbilityDefinition(player.abilityId);
-  const abilityStatus = isAssassin
-    ? abilityMessageTimer > 0
-      ? abilityMessage
-      : player.dashCooldown > 0
-        ? `DASH // ${player.dashCooldown.toFixed(1)}s`
-        : 'ESPACE // DASH PRÊT'
-    : abilityMessageTimer > 0
-      ? abilityMessage
-      : ability
-        ? player.abilityCooldown > 0
-          ? `RECHARGE // ${player.abilityCooldown.toFixed(1)}s`
-          : 'ESPACE // PRÊT'
-        : "ÉQUIPE UNE CAPACITÉ DANS L'ATELIER";
-  const abilityText = isAssassin ? 'DASH OMBRE' : ability ? ability.name : 'AUCUNE';
+  // L'Assassin a une capacite de classe, pas un dash nu : le libelle doit
+  // suivre l'equipement, sinon le HUD ment sur ce que Espace declenche.
+  const ability = getAbilityDefinition(player.abilityId);
+  const hasDash = isAssassin;
+  const abilityStatus = abilityMessageTimer > 0
+    ? abilityMessage
+    : ability
+      ? player.abilityCooldown > 0
+        ? `RECHARGE // ${player.abilityCooldown.toFixed(1)}s`
+        : 'ESPACE // PRÃŠT'
+      : hasDash
+        ? player.dashCooldown > 0
+          ? `DASH // ${player.dashCooldown.toFixed(1)}s`
+          : 'ESPACE // DASH PRÃŠT'
+        : "Ã‰QUIPE UNE CAPACITÃ‰ DANS L'ATELIER";
+  const abilityText = ability ? ability.name : hasDash ? 'DASH OMBRE' : 'AUCUNE';
   if (hudCache.abilityName !== abilityText) {
     ui.abilityName.textContent = abilityText;
     hudCache.abilityName = abilityText;
@@ -3752,29 +4555,46 @@ function updateHUD() {
     ui.abilityStatus.textContent = abilityStatus;
     hudCache.abilityStatus = abilityStatus;
   }
-  const abilityReady = isAssassin ? player.dashCooldown <= 0 : Boolean(ability) && player.abilityCooldown <= 0;
-  const abilityCooling = isAssassin ? player.dashCooldown > 0 : Boolean(ability) && player.abilityCooldown > 0;
+  const abilityReady = ability ? player.abilityCooldown <= 0 : hasDash && player.dashCooldown <= 0;
+  const abilityCooling = ability ? player.abilityCooldown > 0 : hasDash && player.dashCooldown > 0;
   ui.abilityReadout.classList.toggle('ready', abilityReady);
   ui.abilityReadout.classList.toggle('cooling', abilityCooling);
-  const abilityHeading = ui.abilityReadout.querySelector('span');
-  if (abilityHeading) abilityHeading.textContent = isAssassin ? 'DASH // ESPACE' : 'CAPACITÉ // ESPACE';
+  // Le <span> existe une seule fois dans le HUD : on le resout une fois au
+  // lieu de faire un querySelector a chaque tick.
+  if (!ui.abilityHeading) ui.abilityHeading = ui.abilityReadout.querySelector('span');
+  if (ui.abilityHeading) {
+    const headingText = ability ? 'CAPACITÃ‰ // ESPACE' : 'DASH // ESPACE';
+    if (hudCache.abilityHeading !== headingText) {
+      ui.abilityHeading.textContent = headingText;
+      hudCache.abilityHeading = headingText;
+    }
+  }
 
-  if (isAssassin) {
+  if (isAssassin && !ability) {
+    // Sans capacite de classe, le bandeau du bas affiche l'etat du sabre.
     const assassinStatus = player.slashTimer > 0
       ? 'FRAPPE // ACTIVE'
       : player.dashCooldown > 0
         ? `DASH // ${player.dashCooldown.toFixed(1)}s`
-        : 'DASH // PRÊT';
+        : 'DASH // PRÃŠT';
     ui.reloadStatus.classList.toggle('active', player.slashTimer > 0 || player.dashCooldown > 0);
     if (hudCache.reload !== assassinStatus) {
       ui.reloadStatus.textContent = assassinStatus;
       hudCache.reload = assassinStatus;
     }
+  } else if (getWeaponDefinition(player.weaponId).fireMode === 'slash') {
+    // Sabre equipe : pas de chargeur, on montre la frappe.
+    const slashStatus = player.slashTimer > 0 ? 'FRAPPE // ACTIVE' : 'MÃ‰LÃ‰E // PRÃŠT';
+    ui.reloadStatus.classList.toggle('active', player.slashTimer > 0);
+    if (hudCache.reload !== slashStatus) {
+      ui.reloadStatus.textContent = slashStatus;
+      hudCache.reload = slashStatus;
+    }
   } else if (player.reloadRemaining <= 0) {
     ui.reloadStatus.classList.remove('active');
-    if (hudCache.reload !== 'SYSTÈME PRÊT') {
-      ui.reloadStatus.textContent = 'SYSTÈME PRÊT';
-      hudCache.reload = 'SYSTÈME PRÊT';
+    if (hudCache.reload !== 'SYSTÃˆME PRÃŠT') {
+      ui.reloadStatus.textContent = 'SYSTÃˆME PRÃŠT';
+      hudCache.reload = 'SYSTÃˆME PRÃŠT';
     }
   }
 
@@ -3799,7 +4619,7 @@ function updateHUD() {
       .slice(0, 6)
       .map((item) => `<span class="equipment-chip">${item.short}<b>${item.level}</b></span>`)
       .join('');
-    ui.equipmentList.innerHTML = chips || '<span class="equipment-chip">SYSTÈME<b>STANDARD</b></span>';
+    ui.equipmentList.innerHTML = chips || '<span class="equipment-chip">SYSTÃˆME<b>STANDARD</b></span>';
     hudCache.equipment = equipmentSignature;
   }
 }
@@ -3818,8 +4638,8 @@ function updateEffects(delta) {
     particle.mesh.material.opacity = Math.max(0, particle.life / particle.maxLife);
     if (particle.life <= 0) {
       scene.remove(particle.mesh);
-      particle.mesh.geometry.dispose();
-      particle.mesh.material.dispose();
+      // La geometrie est partagee, seul le materiau revient au pool.
+      releaseDebrisMaterial(particle.mesh.material);
       particles.splice(i, 1);
     }
   }
@@ -3885,7 +4705,13 @@ function updateEffects(delta) {
   }
 
   damageFlashTimer = Math.max(0, damageFlashTimer - delta);
-  ui.damageFlash.style.opacity = String(damageFlashTimer > 0 ? Math.min(1, damageFlashTimer * 8) : 0);
+  // Ecrire style.opacity force un recalcul de style : on n'ecrit que si ca
+  // change vraiment, donc zero ecriture quand on ne subit pas de degats.
+  const flashOpacity = damageFlashTimer > 0 ? String(Math.min(1, damageFlashTimer * 8)) : '0';
+  if (hudCache.damageFlash !== flashOpacity) {
+    ui.damageFlash.style.opacity = flashOpacity;
+    hudCache.damageFlash = flashOpacity;
+  }
 }
 
 function updateSceneAnimations(delta) {
@@ -3903,7 +4729,7 @@ function requestPointerLock() {
     const request = canvas.requestPointerLock();
     if (request && typeof request.catch === 'function') request.catch(() => {});
   } catch {
-    // Le navigateur peut refuser le pointer lock dans un onglet headless ou sandboxé.
+    // Le navigateur peut refuser le pointer lock dans un onglet headless ou sandboxÃ©.
   }
 }
 
@@ -4007,6 +4833,10 @@ function initRenderer() {
   renderer.toneMappingExposure = 1.32;
   renderer.shadowMap.enabled = PERFORMANCE_PROFILE.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Par defaut Three.js re-rend la shadow map a chaque frame, alors que
+  // l'arene est statique : on ne la rafraichit qu'a intervalles reguliers.
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
   renderer.autoClear = true;
 }
 
@@ -4043,6 +4873,17 @@ function frame(time) {
 
   updateEffects(delta);
   updateSceneAnimations(delta);
+  // RafraÃ®chissement espacÃ© de la shadow map : les ennemis bougent et
+  // projettent une ombre, mais 20 Hz suffisent et coÃ»tent bien moins cher.
+  if (PERFORMANCE_PROFILE.shadows && state === GAME_STATE.PLAYING) {
+    shadowFrameCounter += 1;
+    if (shadowFrameCounter >= SHADOW_REFRESH_FRAMES) {
+      shadowFrameCounter = 0;
+      renderer.shadowMap.needsUpdate = true;
+    }
+  } else {
+    renderer.shadowMap.needsUpdate = true;
+  }
   renderer.render(scene, camera);
 }
 
@@ -4054,6 +4895,7 @@ function init() {
   raycaster = new THREE.Raycaster();
   initRenderer();
   createEnvironment();
+  syncRaycastTargets();
   weapon = createWeapon();
   assassinWeapon = createAssassinWeapon();
   resetStats();
@@ -4083,8 +4925,8 @@ try {
   ui.loading.innerHTML = `
     <div style="max-width:520px;padding:28px;text-align:center;border:1px solid #ff3158;color:#ff9bab;font:12px monospace;line-height:1.6">
       <strong>INITIALISATION IMPOSSIBLE</strong><br><br>
-      WebGL 2 est nécessaire pour lancer Nexus Breach.<br>
-      Vérifiez l'accélération matérielle de votre navigateur, puis rechargez la page.
+      WebGL 2 est nÃ©cessaire pour lancer Nexus Breach.<br>
+      VÃ©rifiez l'accÃ©lÃ©ration matÃ©rielle de votre navigateur, puis rechargez la page.
     </div>
   `;
 }

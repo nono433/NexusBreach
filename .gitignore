@@ -1,4 +1,4 @@
-# Visual Studio
+﻿# Visual Studio
 .vs/
 *.user
 *.suo
@@ -15,3 +15,11 @@ obj/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Sauvegarde des fichiers d'origine (garde-fou local, pas de versionnement)
+_originaux/
+_edgeprofile/
+__smoke.html
+__preview-*.html
+
+
