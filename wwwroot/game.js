@@ -1260,6 +1260,18 @@ let equippedClass = readEquippedClass();
 let ownedAbilities = readOwnedAbilities();
 let equippedAbility = readEquippedAbility();
 
+// Armes de depart de chaque classe. Change de classe ou sauvegarde une veille
+// version ne doit jamais laisser l'operateur sans arme utilisable.
+//
+// Cette declaration DOIT preceder la reconciliation ci-dessous : celle-ci
+// appelle resolveWeaponForClass, qui lit cette constante. La declaration
+// etait plus bas dans le fichier, dans la zone morte temporelle : le module
+// echouait alors a l'evaluation pour tout joueur dont la sauvegarde portait
+// une arme de l'autre classe, et l'ecran de chargement restait bloque en
+// silence. Elle n'etait atteinte par aucun test, tous demarrant sur une
+// sauvegarde vierge.
+const CLASS_DEFAULT_WEAPON = Object.freeze({ ranger: 'pulse', assassin: 'twinSabers' });
+
 // Reconciliation apres chargement : une sauvegarde d'avant le split par
 // classe peut porter une arme ou une capacite de l'autre classe. On les
 // remplace par les valeurs de depart de la classe plutot que de les laisser
@@ -1795,12 +1807,9 @@ function getWeaponDefinition(id) {
   return WEAPON_DEFINITIONS[id] || WEAPON_DEFINITIONS.pulse;
 }
 
-// Armes de depart de chaque classe. Changer de classe ou de sauvegarder une
-// veille version ne doit jamais laisser l'operateur sans arme utilisable.
-const CLASS_DEFAULT_WEAPON = Object.freeze({ ranger: 'pulse', assassin: 'twinSabers' });
-
 // L'arme equipee n'est valide que pour sa classe. Changer de classe en
-// garde une, ou bascule sur celle de la classe.
+// garde une, ou bascule sur celle de la classe. Declaration de CLASS_DEFAULT_WEAPON
+// plus haut, avant la reconciliation qui l'appelle.
 function resolveWeaponForClass(id, classId) {
   const definition = WEAPON_DEFINITIONS[id];
   if (definition && definition.classId === classId) return definition;
