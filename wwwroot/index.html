@@ -274,6 +274,36 @@
     </div>
 
     <div id="sound-button" class="sound-button" title="Activer ou couper le son (M)" aria-label="Couper le son">♪</div>
+
+    <!-- Commandes tactiles. Masquees sur ordinateur : elles ne s'affichent
+         que si l'appareil a un pointeur grossier, via la classe touche. -->
+    <div id="touch-layer" class="touch-layer" aria-hidden="true">
+      <div id="touch-stick" class="touch-stick">
+        <div class="touch-stick-base"></div>
+        <div class="touch-stick-knob"></div>
+      </div>
+      <div class="touch-actions">
+        <button id="touch-reload" class="touch-button touch-button-reload" type="button" aria-label="Recharger">
+          <span>RECH</span>
+        </button>
+        <button id="touch-fire" class="touch-button touch-button-fire" type="button" aria-label="Tirer">
+          <span>TIR</span>
+        </button>
+        <button id="touch-ability" class="touch-button touch-button-ability" type="button" aria-label="Capacité">
+          <span>CAP</span>
+        </button>
+      </div>
+      <button id="touch-pause" class="touch-button touch-button-pause" type="button" aria-label="Mettre en pause">
+        <span>||</span>
+      </button>
+    </div>
+
+    <div id="rotate-hint" class="rotate-hint" aria-hidden="true">
+      <div class="rotate-hint-card">
+        <strong>Tourne ton téléphone</strong>
+        <p>Nexus Breach se joue en paysage.</p>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="game.js?v=13"></script>

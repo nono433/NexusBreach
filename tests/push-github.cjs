@@ -49,7 +49,9 @@ async function api(method, url, body) {
 // (ils sont nommes _edgeprofile, _edgeprofile-assassin, ...), artefacts.
 const IGNORED_DIRS = new Set(['_originaux', 'node_modules', '.git']);
 const IGNORED_DIR_PREFIXES = ['_edgeprofile'];
-const IGNORED_FILES = /^(__smoke\.html|__preview-.*\.html|__shopshot\.html|capture-.*\.png)$/;
+// Les artefacts de test sont nommes __prefixe (collecteur injecte) et
+// capture-*.png : ils ne doivent jamais partir sur GitHub.
+const IGNORED_FILES = /^(__.*\.html|capture-.*\.png)$/;
 
 function ignoreDirectory(name) {
   return IGNORED_DIRS.has(name) || IGNORED_DIR_PREFIXES.some((prefix) => name.startsWith(prefix));
@@ -115,37 +117,41 @@ function collect(dir, base, out) {
   console.log(`\nnouvel arbre : ${newTree.sha}`);
 
   const message = [
-    'Rééquilibrage complet, séparation des classes et nouveau sabre',
+    'Commandes tactiles : le jeu devient jouable sur mobile',
     '',
-    'Équilibrage :',
-    '- Améliorations de vague additives (+78 % dégâts / +66 % cadence au lieu de ×32 en cascade)',
-    '- Toutes les courbes ennemies plafonnées : PV, dégâts, cadence, effectif, total par vague',
-    '- Armes rééquilibrées pour que le DPS suive le prix, atelier volontairement sobre',
-    '- NOVA et AEGIS reprises, elles étaient du contenu mort',
-    '- Foundry assouplie, le même équipement y mourait 30 vagues plus tôt',
-    '- DPS affiché dans l\'atelier corrigé (perforation, explosion, brasure)',
+    'Jeu jouable au doigt, en paysage :',
+    '- Joystick flottant dans le coin gauche bas, il apparait ou se pose le pouce',
+    '- Glissement a droite qui vise ET tire : sans tir automatique il faudrait un 3e doigt',
+    '- Boutons RECH / TIR / CAP et pause tactile',
+    '- La pause passe par un bouton car il n y a pas de pointer lock sur mobile',
+    '- ?tactile=1 force le mode tactile pour tester depuis un ordinateur',
     '',
-    'Classes exclusives :',
-    '- Ranger : 8 armes à feu, 4 capacités, 7 améliorations, 3 modules',
-    '- Assassin : 5 sabres, 4 capacités, 7 améliorations, 3 modules',
-    '- 3 améliorations et 2 modules communs',
-    '- L\'atelier n\'affiche que ce qui est accessible avec la classe',
+    'Performance mobile :',
+    '- Ombres et anticrenelage coupes, resolution a 85 %, particules a 40 %',
+    '- 8 ennemis simultanes au lieu de 11, 50 images par seconde',
+    '- Detection au pointeur grossier : un portable a ecran tactile n affiche rien',
+    '- Audio deverrouille au premier appui, sinon iOS et Chrome le bloquent',
     '',
-    'Visuels :',
-    '- Sabre reconstruit : lame courbée au corps sombre et tranchant néon, garde angulaire',
-    '- La lame est déformée par vertex pour obtenir une vraie courbure de sabre',
+    'Ecrans verifies sur format telephone :',
+    '- Indications clavier retirees au doigt, barre de vie remontee en haut a gauche',
+    '- Compteur de munitions et boutons d action realignes a droite',
+    '- Les commandes n apparaissent qu en jeu et en pause',
+    '- Ecran de rotation en portrait, menus defilables sur ecran court',
+    '- touch-action: none, sans quoi le doigt fait defiler la page en jouant',
     '',
-    'Corrections antérieures :',
-    '- Headshots enfin comptabilisés (la hitbox englobait la tête)',
-    '- Fuite de mémoire GPU corrigée dans clearDynamicObjects',
-    '- Blocage de l\'écran d\'amélioration quand tout était au maximum',
+    'Corrections trouvees en verifiant le tactile :',
+    '- Les commandes restaient affichees sur l ecran de mort et a l atelier',
+    '- touchStickBounds calculait minY sans jamais l utiliser',
+    '- En sortant la barre de vie du flux de grille, les munitions glissaient au centre',
     '',
-    'Performances :',
-    '- Géométrie de débris partagée, pool de matériaux, suppression des allocations par frame',
-    '- Shadow map rafraîchie 1 frame sur 3, cache DOM pour le HUD',
-    '',
-    'Outillage :',
-    '- Lanceur Node.js (le SDK .NET n\'était pas installé) et tests de rééquilibrage'
+    'Tests :',
+    '- tests/tactile.cjs : 13 etapes, joystick, visee, tir auto, pause, atelier',
+    '- tests/hud.cjs : collisions du HUD en paysage, bureau et tactile',
+    '- Le test de HUD mesure l encre visible, pas les boites de conteneur : un',
+    '  element de grille est etire sur toute sa cellule, donc deux freres se',
+    '  toucheraient toujours. Controle negatif documente dans le fichier.',
+    '- tests/encodage.cjs ne se signale plus lui-meme',
+    '- 7 tests au vert, headshots 15/15, encodage propre'
   ].join('\n');
 
   const commit = await api('POST', `${API}/git/commits`, {

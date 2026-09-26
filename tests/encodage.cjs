@@ -48,10 +48,16 @@ function reparer(buffer) {
 const cibles = [];
 function parcourir(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (['_originaux', '_edgeprofile', 'node_modules', '.git', 'vendor'].includes(entry.name)) continue;
+    // Les profils Edge de test sont des repertoires suffixes (_edgeprofile-x) :
+    // un nom exact ne suffirait pas a les exclure.
+    if (['_originaux', 'node_modules', '.git', 'vendor'].includes(entry.name)) continue;
+    if (entry.name.startsWith('_edgeprofile')) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) { parcourir(full); continue; }
     if (!/\.(js|mjs|cjs|css|html|md|json|bat)$/i.test(entry.name)) continue;
+    // Ces deux fichiers contiennent les motifs de detection en toutes lettres :
+    // ils se signaleraient eux-memes sans que le jeu soit corrompu.
+    if (entry.name === 'encodage.cjs' || entry.name === 'reparer-encodage.cjs') continue;
     cibles.push(full);
   }
 }

@@ -30,6 +30,12 @@ body {
   color: var(--white);
   font-family: var(--font-display);
   user-select: none;
+  /* Sur mobile, sans cela le doigt fait defiler la page ou zoomer pendant
+     qu'on joue, ce qui rend les commandes tactiles inutilisables. */
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button,
@@ -107,6 +113,10 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Sans cela, sur un ecran de telephone en paysage (environ 420 px de
+     haut), le menu et l'ecran de fin sont coupes et leur contenu devient
+     inatteignable. */
+  overflow: auto;
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
@@ -943,7 +953,9 @@ button {
 .wave-readout { min-width: 100px; text-align: center; }
 .wave-readout .eyebrow { color: var(--cyan); }
 .wave-readout strong { font-size: 25px; line-height: 1; }
-.threat-readout { text-align: right; }
+/* La colonne des hostiles est alignee a droite contre celle des credits :
+   sans cet espacement les deux libelles se touchent sur fenetre etroite. */
+.threat-readout { padding-right: 16px; text-align: right; }
 .threat-readout strong { color: var(--orange); font-size: 19px; }
 .credits-readout { min-width: 74px; padding-right: 38px; text-align: right; }
 .credits-readout .eyebrow { color: var(--gold); }
@@ -1148,6 +1160,271 @@ kbd { min-width: 17px; padding: 3px 4px; border: 1px solid rgba(130, 172, 183, 0
   .shop-items { grid-template-columns: 1fr; }
   .shop-items.shop-classes { grid-template-columns: 1fr; }
   .shop-item { min-height: 245px; }
+}
+
+/* =========================================================================
+   Commandes tactiles
+
+   Tout est masque par defaut et n'apparait que si la racine porte la classe
+   .touche, ajoutee par le jeu quand l'appareil a un pointeur grossier. Sans
+   elle, un ordinateur avec un ecran tactile n'affiche rien.
+   ========================================================================= */
+
+.touch-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  pointer-events: none;
+  touch-action: none;
+}
+
+/* Les commandes n'apparaissent qu'en jeu et en pause. La classe
+   .touche-en-jeu est posee par le jeu, car le HUD n'est pas masque a la
+   mort et ne pouvait donc pas servir de temoin fiable. */
+.touche.touche-en-jeu .touch-layer {
+  display: block;
+}
+
+/* Le joystick est flottant : il se positionne la ou le pouce se pose, et
+   suit le doigt tant qu'il reste dans le coin gauche. */
+.touch-stick {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+
+.touch-stick.active {
+  opacity: 1;
+}
+
+.touch-stick-base,
+.touch-stick-knob {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.touch-stick-base {
+  width: 132px;
+  height: 132px;
+  border: 1px solid rgba(0, 245, 255, 0.34);
+  background: radial-gradient(circle, rgba(0, 245, 255, 0.09), rgba(0, 245, 255, 0.02) 70%);
+  box-shadow: inset 0 0 26px rgba(0, 245, 255, 0.1);
+}
+
+.touch-stick-knob {
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(0, 245, 255, 0.6);
+  background: rgba(0, 245, 255, 0.24);
+  box-shadow: 0 0 20px rgba(0, 245, 255, 0.34);
+}
+
+.touch-actions {
+  position: absolute;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(22px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.touch-button {
+  position: relative;
+  display: grid;
+  padding: 0;
+  border: 1px solid rgba(0, 245, 255, 0.34);
+  border-radius: 50%;
+  background: rgba(6, 18, 26, 0.6);
+  color: var(--cyan-soft);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  place-items: center;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform 90ms ease, background 90ms ease, border-color 90ms ease;
+}
+
+.touch-button::before {
+  content: "";
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  transition: border-color 90ms ease;
+}
+
+.touch-button.pressed {
+  transform: scale(0.93);
+  border-color: var(--cyan);
+  background: rgba(0, 245, 255, 0.2);
+}
+
+.touch-button.pressed::before {
+  border-color: rgba(0, 245, 255, 0.24);
+}
+
+.touch-button-fire {
+  width: 92px;
+  height: 92px;
+  border-color: rgba(255, 77, 34, 0.5);
+  background: rgba(38, 12, 6, 0.55);
+  color: #ffb59a;
+  font-size: 11px;
+}
+
+.touch-button-ability {
+  width: 70px;
+  height: 70px;
+}
+
+.touch-button-reload {
+  width: 58px;
+  height: 58px;
+  font-size: 8px;
+}
+
+.touch-button-pause {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  width: 46px;
+  height: 46px;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+/* Ecran bloque : invite a tourner l'appareil. */
+.rotate-hint {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: none;
+  padding: 24px;
+  background: rgba(2, 7, 11, 0.97);
+  place-items: center;
+  text-align: center;
+}
+
+.touche-portrait .rotate-hint {
+  display: grid;
+}
+
+.rotate-hint-card {
+  max-width: 340px;
+  padding: 28px 22px;
+  border: 1px solid var(--line);
+  background: rgba(8, 15, 22, 0.9);
+}
+
+.rotate-hint-card strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 19px;
+  letter-spacing: 0.02em;
+}
+
+.rotate-hint-card p {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+/* Le HUD ne doit pas passer sous les commandes tactiles. */
+.touche .hud-top {
+  padding-right: 62px;
+}
+
+.touche .hud-bottom {
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+}
+
+/* Le joystick occupe le coin bas-gauche, la ou se pose le pouce. On libere
+   cette zone en remontant la vie sous le bloc secteur : le joueur ne perd
+   plus la barre de vie sous son propre doigt. */
+.touche .health-panel {
+  position: fixed;
+  top: max(92px, calc(env(safe-area-inset-top) + 78px));
+  left: max(18px, env(safe-area-inset-left));
+  width: min(200px, 32vw);
+  opacity: 0.92;
+}
+
+/* Effet de bord de la regle precedente : sortie du flux, la vie n'occupe plus
+   sa cellule de grille, et le compteur de munitions se retrouve alors place
+   dans la premiere colonne, au centre de l'ecran. On le remet explicitement
+   dans la derniere colonne, cote des boutons d'action. */
+.touche .ammo-panel {
+  grid-column: 3;
+}
+
+.touche .health-bar-shell {
+  height: 5px;
+}
+
+.touche .health-panel .panel-heading strong {
+  font-size: 17px;
+}
+
+/* Les indications clavier n'ont aucun sens au doigt, et elles occupent la
+   bande basse ou se placent les commandes tactiles. */
+.touche .controls-hint {
+  display: none;
+}
+
+/* Les boutons d'action doivent passer AU-DESSUS du bandeau bas, sinon ils
+   recouvrent le compteur de munitions et le libelle de l'arme. */
+.touche .touch-actions {
+  bottom: max(150px, calc(env(safe-area-inset-bottom) + 140px));
+}
+
+/* Le diametre de la base doit rester deux fois TOUCH_STICK_RADIUS (62 px
+   dans game.js), sinon le bouton deborde du cercle. */
+.touche .touch-stick-base {
+  width: 124px;
+  height: 124px;
+}
+
+.touche .touch-stick-knob {
+  width: 54px;
+  height: 54px;
+}
+
+/* Ecran court : telephone en paysage. La largeur est grande mais la hauteur
+   ne depasse pas 430 px, il faut donc compresser verticalement ce que les
+   media queries de largeur ne voient pas. */
+@media (max-height: 540px) {
+  #menu-screen { padding: 20px 24px; }
+  .menu-content h1 { font-size: clamp(40px, 8vh, 62px); }
+  .tagline { margin-bottom: 10px; font-size: 8px; }
+  .briefing { margin-top: 14px; }
+  .class-selector,
+  .map-selector { margin-top: 10px; }
+  .menu-footer { display: none; }
+  .panel { padding: 22px; }
+  .panel h2 { font-size: clamp(30px, 7vh, 48px); }
+  .shop-header h2 { font-size: clamp(26px, 6vh, 40px); }
+  .shop-panel { padding: 22px 20px; }
+  .shop-item { min-height: 210px; }
+  .shop-classes .shop-item { min-height: 190px; }
+  .shop-item-visual { margin: 10px auto 8px; }
+  .shop-item-visual svg { width: 40px; height: 40px; }
+  .shop-item h3 { font-size: 17px; }
+  .upgrade-title-row h2 { font-size: clamp(24px, 6vh, 38px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

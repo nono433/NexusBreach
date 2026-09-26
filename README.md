@@ -58,18 +58,49 @@ Pour démarrer le serveur sans ouvrir le navigateur :
 node serveur.js --no-browser
 ```
 
+## Jouer sur mobile
+
+Le jeu est jouable au doigt, sans application : ouvre l’adresse en ligne dans le navigateur du téléphone. **Il se joue en paysage** — un FPS en portrait n’a pas la place pour le joystick et la visée, et un écran bloque te l’indique.
+
+Le mode tactile se détecte tout seul (pointeur grossier) : rien à cocher, et un ordinateur équipé d’un écran tactile n’affiche pas les commandes pour rien.
+
+| Geste | Effet |
+| --- | --- |
+| **Glisser à gauche** (bas de l’écran) | Joystick flottant : il apparaît où tu poses le pouce. Il ne s’active que dans le coin gauche **et** le bas de l’écran, pour ne pas masquer le HUD. |
+| **Glisser à droite** | Viser, **et tirer en même temps**. C’est le standard des FPS mobiles : sans tir automatique, il faudrait un troisième doigt. |
+| **RECH / TIR / CAP** | Recharger, tir sans déplacer la vue, capacité. |
+| **❚❚** (haut droite) | Pause. Indispensable : sur mobile il n’y a pas de pointer lock, donc aucune touche `Échap`. |
+
+Quelques différences avec le PC, assumées :
+
+- **Pas d’indication clavier** à l’écran, remplacées par les boutons.
+- **La barre de vie est remontée en haut à gauche**, le compteur de munitions reste en bas à droite : le coin bas-gauche appartient au pouce.
+- **Profil graphique allégé** : ombres et anticrénelage coupés, résolution réduite à 85 %, particules à 40 %, 50 images/seconde, et 8 ennemis simultanés au lieu de 11. Le jeu détecte aussi les machines faibles sur PC comme avant.
+- **Son** : les navigateurs mobiles bloquent l’audio tant que tu n’as pas touché la page. Le premier appui le débloque.
+
+Si tu veux tester les commandes tactiles depuis un ordinateur, ajoute `?tactile=1` à l’adresse.
+
 ## Tests
 
 ```powershell
 node tests\headshot.test.mjs   # géométrie du headshot (15 cas)
 node tests\balance.check.mjs   # vague de mort par configuration
+node tests\encodage.cjs        # double encodage UTF-8
 node tests\smoke.cjs           # jeu réel dans un navigateur headless (Ranger)
 node tests\assassin.cjs        # classe Assassin : atelier, frappe, dash
+node tests\tactile.cjs         # 13 étapes : joystick, visée, tir auto, pause, atelier
+node tests\hud.cjs             # collisions du HUD en paysage (bureau)
+node tests\hud.cjs --tactile   # idem en mode tactile
+node tests\chevauchement.cjs   # cartes de l'Atelier de 1100 à 360 px
 ```
 
 `balance.model.mjs` contient les mêmes constantes que `game.js` — si tu changes une courbe dans le jeu, change-la aussi dans le modèle, sinon les tests mentent.
 
+`hud.cjs` compare les blocs du HUD en **encre visible** (le texte) ou en boîte peinte (les boutons), jamais en boîte de conteneur : un élément de grille est étiré sur toute sa cellule, donc deux frères voisins se toucheraient toujours alors que leurs libellés sont bien séparés. Un contrôle négatif est documented dans le fichier : remettre les boutons d’action en bas doit faire échouer le test.
+
 ## Commandes
+
+Sur ordinateur :
 
 - **ZQSD / WASD** — se déplacer
 - **Souris** — viser
@@ -79,6 +110,8 @@ node tests\assassin.cjs        # classe Assassin : atelier, frappe, dash
 - **Maj** — sprinter
 - **Échap** — pause
 - **M** — activer/désactiver le son
+
+Sur mobile : voir [Jouer sur mobile](#jouer-sur-mobile).
 
 ## Améliorations
 

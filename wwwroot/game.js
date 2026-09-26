@@ -50,6 +50,14 @@ const ui = {
   shopButton: document.querySelector('#shop-button'),
   gameoverShopButton: document.querySelector('#gameover-shop-button'),
   shopCloseButton: document.querySelector('#shop-close-button'),
+  // Commandes tactiles : absentes du DOM sur un poste classique, le code
+  // doit donc tolerate un null.
+  touchLayer: document.querySelector('#touch-layer'),
+  touchStick: document.querySelector('#touch-stick'),
+  touchFire: document.querySelector('#touch-fire'),
+  touchReload: document.querySelector('#touch-reload'),
+  touchAbility: document.querySelector('#touch-ability'),
+  touchPause: document.querySelector('#touch-pause'),
   saveProgressButton: document.querySelector('#save-progress-button'),
   loadProgressButton: document.querySelector('#load-progress-button'),
   saveFileInput: document.querySelector('#save-file-input'),
@@ -80,23 +88,42 @@ const CONFIG = {
   interactionRange: 70
 };
 
+// Appareil tactile : on se base sur le pointeur principal et non sur
+// maxTouchPoints, sinon un portable avec ecran tactile (pointeur fin)
+// afficherait les commandes sans raison.
+// Le parametre ?tactile=1 force le mode tactile : utile pour tester les
+// commandes depuis un ordinateur.
+const FORCE_TOUCH = typeof location !== 'undefined'
+  && typeof URLSearchParams === 'function'
+  && new URLSearchParams(location.search).get('tactile') === '1';
+const IS_TOUCH = FORCE_TOUCH || (typeof window.matchMedia === 'function'
+  ? window.matchMedia('(pointer: coarse)').matches
+  : navigator.maxTouchPoints > 0);
+
 // Un profil automatique évite de rendre le jeu inutilisable sur les GPU intégrés.
 // Le rendu reste net, mais avec une résolution et des ombres mieux adapté au matériel.
+// Le palier mobile est plus sever : les GPU de telephone encaissent bien moins
+// les ombres et la haute resolution.
 const PERFORMANCE_PROFILE = (() => {
   const cores = Number(navigator.hardwareConcurrency) || 8;
   const memory = Number(navigator.deviceMemory) || 8;
   const lowPower = cores <= 4 || memory <= 4;
+  const mobile = IS_TOUCH;
   return {
+    mobile,
     lowPower,
-    maxPixelRatio: lowPower ? 1 : 1.25,
-    shadowMapSize: lowPower ? 512 : 1024,
-    antialias: !lowPower,
-    shadows: !lowPower,
-    targetFps: lowPower ? 50 : 60,
-    hudInterval: lowPower ? 0.1 : 0.05,
-    flowFieldInterval: lowPower ? 0.4 : 0.3,
-    particleScale: lowPower ? 0.55 : 1,
-    enemyAuraLights: !lowPower
+    maxPixelRatio: mobile ? 0.85 : lowPower ? 1 : 1.25,
+    shadowMapSize: mobile ? 512 : lowPower ? 512 : 1024,
+    antialias: !lowPower && !mobile,
+    shadows: !lowPower && !mobile,
+    targetFps: mobile ? 50 : lowPower ? 50 : 60,
+    hudInterval: mobile ? 0.12 : lowPower ? 0.1 : 0.05,
+    flowFieldInterval: mobile ? 0.5 : lowPower ? 0.4 : 0.3,
+    particleScale: mobile ? 0.4 : lowPower ? 0.55 : 1,
+    enemyAuraLights: !lowPower && !mobile,
+    // Effectif concurrent : reduit sur mobile, ou le GPU doit dessiner plus
+    // d'ennemis dans le meme temps alors qu'il a moins de marge.
+    maxConcurrentCap: mobile ? 8 : 11
   };
 })();
 
@@ -203,7 +230,7 @@ const WAVE_CURVES = {
   // arithmetique. Avant : 1 + 0.09*(vague-1) sans borne, 5,4x a la vague 50.
   enemyDamage: (wave) => Math.min(1.7, 1 + 0.026 * (wave - 1)),
   attackCooldown: (wave) => Math.max(0.8, 1.5 - 0.016 * wave),
-  maxConcurrent: (wave) => Math.min(11, 4 + Math.floor(wave * 0.5)),
+  maxConcurrent: (wave) => Math.min(PERFORMANCE_PROFILE.maxConcurrentCap, 4 + Math.floor(wave * 0.5)),
   total: (wave) => Math.min(44, 6 + Math.round(wave * 1.9 + wave * wave * 0.014)),
   // L'introduction est plus douce : la vague 1 ne doit pas tuer un joueur
   // qui n'a jamais vu le jeu.
@@ -1314,6 +1341,16 @@ class SoundSystem {
     this.noiseBuffer = this.context.createBuffer(1, this.context.sampleRate * 0.5, this.context.sampleRate);
     const data = this.noiseBuffer.getChannelData(0);
     for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
+  }
+
+  // Sur mobile, le navigateur bloque l'audio tant que l'utilisateur n'a pas
+  // interagi avec la page. ensure() resume le contexte, mais Safari et Chrome
+  // sur iOS exigent un resume() declenche depuis un geste utilisateur : c'est
+  // pourquoi cette methode est appelee sur le premier appui tactile.
+  unlockTouch() {
+    if (!this.context || this.context.state !== 'suspended') return;
+    const reprise = this.context.resume();
+    if (reprise && typeof reprise.catch === 'function') reprise.catch(() => {});
   }
 
   setEnabled(enabled) {
@@ -3574,6 +3611,7 @@ function updatePlayer(delta) {
   const forward = player.forwardScratch.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const right = player.rightScratch.set(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
   move.addScaledVector(forward, forwardInput).addScaledVector(right, rightInput);
+  applyTouchMovement(move, forward, right);
   if (move.lengthSq() > 1) move.normalize();
   player.moving = move.lengthSq() > 0.01;
 
@@ -4295,6 +4333,7 @@ function completeWave() {
   }
   state = GAME_STATE.UPGRADE;
   keys.clear();
+  resetTouchState();
   if (document.pointerLockElement) document.exitPointerLock();
   ui.waveBanner.classList.remove('show');
   showUpgradeChoices(choices);
@@ -4414,6 +4453,7 @@ function endGame() {
   if (state === GAME_STATE.DEAD) return;
   state = GAME_STATE.DEAD;
   keys.clear();
+  resetTouchState();
   player.health = 0;
   if (document.pointerLockElement) document.exitPointerLock();
   score += Math.max(0, Math.floor(wave * 125));
@@ -4448,6 +4488,7 @@ function returnToMenu() {
   saveProfile();
   state = GAME_STATE.MENU;
   keys.clear();
+  resetTouchState();
   if (document.pointerLockElement) document.exitPointerLock();
   weapon.visible = false;
   if (assassinWeapon) assassinWeapon.visible = false;
@@ -4746,7 +4787,35 @@ function requestPointerLock() {
   }
 }
 
+// La couche tactile ne doit s'afficher qu'en jeu et en pause. On s'appuyait
+// sur la classe .hidden du HUD, mais celle-ci n'est pas retiree a la mort : les
+// boutons restaient donc visibles sur l'ecran de defaite et l'atelier.
+// L'etat est desormais explicite, et mis a jour depuis la boucle, ce qui
+// couvre tous les changements d'etat sans avoir a les oubliun un par un.
+let touchLayerPlaying = null;
+
+function majCoucheTactile() {
+  if (!IS_TOUCH) return;
+  const actif = state === GAME_STATE.PLAYING || state === GAME_STATE.PAUSED;
+  if (actif === touchLayerPlaying) return;
+  touchLayerPlaying = actif;
+  document.documentElement.classList.toggle('touche-en-jeu', actif);
+}
+
+// Pause explicite. Sur ordinateur, la perte du pointer lock suffit ; sur
+// tactile il faut un bouton, sinon on ne peut jamais s'arreter.
+function openPause() {
+  if (state !== GAME_STATE.PLAYING) return;
+  state = GAME_STATE.PAUSED;
+  keys.clear();
+  resetTouchState();
+  if (document.pointerLockElement) document.exitPointerLock();
+  ui.pause.classList.add('active');
+}
+
 function onPointerLockChange() {
+  // Sur tactile il n'y a pas de pointer lock : la pause passe par le bouton.
+  if (IS_TOUCH) return;
   const locked = document.pointerLockElement === canvas;
   if (locked) {
     if (state === GAME_STATE.PAUSED) {
@@ -4756,10 +4825,245 @@ function onPointerLockChange() {
   } else if (state === GAME_STATE.PLAYING) {
     state = GAME_STATE.PAUSED;
     keys.clear();
+    resetTouchState();
     ui.pause.classList.add('active');
   }
 }
 
+// ===========================================================================
+// Commandes tactiles
+//
+// Le jeu lit le mouvement via un vecteur et la visee via player.yaw/pitch.
+// Le tactile se branche donc la-dessus, sans refonte : un joystick flottant
+// alimente le meme vecteur de deplacement, et le glissement a droite ecrit
+// directement dans yaw/pitch comme le fait la souris.
+//
+// TroisAmenagements propres au tactile :
+//  - pas de pointer lock : le menu Pause a besoin d'un bouton, sinon on ne
+//    peut jamais s'arreter ;
+//  - le tir est automatique pendant le glissement de visee, sinon il faut
+//    garder un doigt sur l'ecran pour viser et un autre pour tirer ;
+//  - les evenements Pointer sont multi-touch, il faut donc suivre un
+//    identifiant par role (joystick / visee) et non compter les doigts.
+// ===========================================================================
+
+const TOUCH = {
+  // Identifiant du doigt qui pilote le joystick, -1 si aucun.
+  stickId: -1,
+  stickOriginX: 0,
+  stickOriginY: 0,
+  // Sortie normalisee du joystick, -1 a 1 sur chaque axe.
+  moveX: 0,
+  moveY: 0,
+  // Identifiant du doigt qui vise, -1 si aucun.
+  lookId: -1,
+  lookX: 0,
+  lookY: 0,
+  // Le tir automatique est actif quand on glisse pour viser.
+  firing: false,
+  fireButton: false
+};
+
+const TOUCH_STICK_RADIUS = 62;
+// Sensibilite de visee tactile, en radians par pixel. Plus faible que la
+// souris (0,00185) car un doigt parcourt beaucoup plus vite qu'un curseur.
+const TOUCH_LOOK_SENSITIVITY = 0.0032;
+// Au-dela, on considere que le joueur a perdu le doigt et on lache.
+const TOUCH_CANCEL_DISTANCE = 220;
+
+const touchStick = { element: null, base: null, knob: null };
+
+function touchStickBounds() {
+  // Le joystick n'apparait que dans le coin gauche ET dans la moitie basse :
+  // plus haut, le doigt tomberait sur le HUD (vie, arme) et le masquerait.
+  // Au-dessus de cette ligne, le tactile sert a viser.
+  return {
+    maxX: window.innerWidth * 0.46,
+    minY: window.innerHeight * 0.42
+  };
+}
+
+function showTouchStick(x, y) {
+  const stick = touchStick.element;
+  if (!stick) return;
+  stick.style.left = `${x}px`;
+  stick.style.top = `${y}px`;
+  stick.classList.add('active');
+}
+
+function moveTouchStick(x, y) {
+  if (!touchStick.knob) return;
+  const dx = x - TOUCH.stickOriginX;
+  const dy = y - TOUCH.stickOriginY;
+  const distance = Math.hypot(dx, dy);
+  const limited = distance > TOUCH_STICK_RADIUS ? TOUCH_STICK_RADIUS / distance : 1;
+  const knobX = dx * limited;
+  const knobY = dy * limited;
+  if (touchStick.knob) touchStick.knob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+  // Sortie normalisee : de -1 a 1, avec un petit seuil mort pour eviter
+  // que le joueur glisse en marchant.
+  const deadZone = 0.14;
+  const normX = (knobX / TOUCH_STICK_RADIUS) / (1 - deadZone);
+  const normY = (knobY / TOUCH_STICK_RADIUS) / (1 - deadZone);
+  TOUCH.moveX = Math.abs(normX) < deadZone ? 0 : Math.sign(normX) * Math.min(1, Math.abs(normX));
+  TOUCH.moveY = Math.abs(normY) < deadZone ? 0 : Math.sign(normY) * Math.min(1, Math.abs(normY));
+}
+
+function hideTouchStick() {
+  TOUCH.stickId = -1;
+  TOUCH.moveX = 0;
+  TOUCH.moveY = 0;
+  if (touchStick.element) touchStick.element.classList.remove('active');
+  if (touchStick.knob) touchStick.knob.style.transform = 'translate(-50%, -50%)';
+}
+
+function releaseTouchLook() {
+  TOUCH.lookId = -1;
+  TOUCH.lookX = 0;
+  TOUCH.lookY = 0;
+  TOUCH.firing = false;
+}
+
+// Relache tout l'etat tactile. Appele a chaque changement d'etat de jeu,
+// sinon un doigt laisse en l'air ferait continuer de tirer en pause.
+function resetTouchState() {
+  hideTouchStick();
+  releaseTouchLook();
+  TOUCH.fireButton = false;
+  if (ui.touchFire) ui.touchFire.classList.remove('pressed');
+  if (ui.touchReload) ui.touchReload.classList.remove('pressed');
+  if (ui.touchAbility) ui.touchAbility.classList.remove('pressed');
+}
+
+function applyTouchLook(dx, dy) {
+  if (state !== GAME_STATE.PLAYING) return;
+  player.yaw -= dx * TOUCH_LOOK_SENSITIVITY;
+  player.pitch -= dy * TOUCH_LOOK_SENSITIVITY;
+  player.pitch = THREE.MathUtils.clamp(player.pitch, -Math.PI * 0.46, Math.PI * 0.46);
+}
+
+function bindHoldButton(element, onPress, onRelease) {
+  if (!element) return;
+  const press = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    element.classList.add('pressed');
+    onPress();
+  };
+  const release = (event) => {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    element.classList.remove('pressed');
+    if (onRelease) onRelease();
+  };
+  element.addEventListener('pointerdown', press);
+  element.addEventListener('pointerup', release);
+  element.addEventListener('pointercancel', release);
+  element.addEventListener('pointerleave', release);
+}
+
+function initTouchControls() {
+  document.documentElement.classList.toggle('touche', IS_TOUCH);
+  if (!IS_TOUCH) return;
+
+  touchStick.element = ui.touchStick;
+  touchStick.base = ui.touchStick ? ui.touchStick.querySelector('.touch-stick-base') : null;
+  touchStick.knob = ui.touchStick ? ui.touchStick.querySelector('.touch-stick-knob') : null;
+
+  // Ecran de rotation : le jeu ne se joue qu'en paysage.
+  function majOrientation() {
+    const portrait = window.innerHeight > window.innerWidth;
+    document.documentElement.classList.toggle('touche-portrait', IS_TOUCH && portrait);
+  }
+  majOrientation();
+  window.addEventListener('resize', majOrientation);
+  window.addEventListener('orientationchange', () => window.setTimeout(majOrientation, 120));
+
+  // Le canvas gere joystick et visee. On n'ecoute que le tactile : la souris
+  // passe deja par mousedown/mousemove, qui fonctionneraient deux fois sinon.
+  canvas.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch') return;
+    event.preventDefault();
+    if (state !== GAME_STATE.PLAYING) return;
+    const bounds = touchStickBounds();
+    const zoneGauche = event.clientX < bounds.maxX && event.clientY > bounds.minY;
+    if (zoneGauche && TOUCH.stickId === -1) {
+      TOUCH.stickId = event.pointerId;
+      TOUCH.stickOriginX = event.clientX;
+      TOUCH.stickOriginY = event.clientY;
+      showTouchStick(event.clientX, event.clientY);
+    } else if (TOUCH.lookId === -1) {
+      TOUCH.lookId = event.pointerId;
+      TOUCH.lookX = event.clientX;
+      TOUCH.lookY = event.clientY;
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'touch') return;
+    event.preventDefault();
+    if (event.pointerId === TOUCH.stickId) {
+      moveTouchStick(event.clientX, event.clientY);
+    } else if (event.pointerId === TOUCH.lookId) {
+      const dx = event.clientX - TOUCH.lookX;
+      const dy = event.clientY - TOUCH.lookY;
+      TOUCH.lookX = event.clientX;
+      TOUCH.lookY = event.clientY;
+      applyTouchLook(dx, dy);
+      // Tir automatique pendant la visee : c'est ce qui permet de ne pas
+      // garder un second doigt sur un bouton.
+      TOUCH.firing = true;
+      if (Math.hypot(dx, dy) > 0.4) audio.unlockTouch();
+    }
+  }, { passive: false });
+
+  const finPointeur = (event) => {
+    if (event.pointerType !== 'touch') return;
+    if (event.pointerId === TOUCH.stickId) hideTouchStick();
+    if (event.pointerId === TOUCH.lookId) releaseTouchLook();
+  };
+  canvas.addEventListener('pointerup', finPointeur);
+  canvas.addEventListener('pointercancel', finPointeur);
+
+  // Le geste de zoom du navigateur est indesirable en jeu.
+  document.addEventListener('gesturestart', (event) => event.preventDefault());
+  document.addEventListener('dblclick', (event) => event.preventDefault());
+
+  bindHoldButton(ui.touchFire, () => { TOUCH.fireButton = true; }, () => { TOUCH.fireButton = false; });
+  bindHoldButton(ui.touchReload, () => { if (state === GAME_STATE.PLAYING) startReload(); });
+  bindHoldButton(ui.touchAbility, () => { if (state === GAME_STATE.PLAYING) activateAbility(); });
+
+  if (ui.touchPause) {
+    // pointerdown et non click : sur tactile la reponse est plus immediate,
+    // et un PointerEvent synthetique ne declenche pas un click.
+    ui.touchPause.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (state === GAME_STATE.PLAYING) openPause();
+    });
+  }
+
+  // Le son est bloque par les navigateurs mobiles tant que l'utilisateur
+  // n'a pas interagi. Le premier appui le reactive.
+  const deverrouiller = () => {
+    audio.unlockTouch();
+    window.removeEventListener('pointerdown', deverrouiller, true);
+  };
+  window.addEventListener('pointerdown', deverrouiller, true);
+}
+
+// Contribution du joystick au deplacement, ajoutee au meme vecteur que les
+// touches. Les deux sens coexistent : un joueur tactile peut aussi brancher
+// un clavier.
+function applyTouchMovement(move, forward, right) {
+  if (!IS_TOUCH) return move;
+  if (TOUCH.moveY !== 0) move.addScaledVector(forward, -TOUCH.moveY);
+  if (TOUCH.moveX !== 0) move.addScaledVector(right, TOUCH.moveX);
+  return move;
+}
+
+function isTouchFiring() {
+  return TOUCH.firing || TOUCH.fireButton;
+}
 function initEvents() {
   ui.startButton.addEventListener('click', startNewGame);
   ui.mapButtons.forEach((button) => {
@@ -4861,6 +5165,7 @@ function resize() {
 }
 
 function frame(time) {
+  majCoucheTactile();
   const minFrameTime = 1000 / PERFORMANCE_PROFILE.targetFps;
   if (time - lastRenderedFrame < minFrameTime - 0.5) return;
   const delta = Math.min(0.05, lastFrame ? (time - lastFrame) / 1000 : 1 / 60);
@@ -4873,7 +5178,7 @@ function frame(time) {
     camera.lookAt(0, 1.1, -3);
   } else if (state === GAME_STATE.PLAYING) {
     runTime += delta;
-    if (keys.has('Mouse0')) fireWeapon();
+    if (keys.has('Mouse0') || isTouchFiring()) fireWeapon();
     updatePlayer(delta);
     updateEnemies(delta);
     updateWave(delta);
@@ -4917,6 +5222,7 @@ function init() {
   updateMapUI();
   updateClassUI();
   initEvents();
+  initTouchControls();
   window.addEventListener('resize', resize);
   resize();
   updateCreditsUI();

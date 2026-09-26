@@ -19,9 +19,9 @@ Thumbs.db
 # Sauvegarde des fichiers d'origine (garde-fou local, pas de versionnement)
 _originaux/
 _edgeprofile*/
-__shopshot.html
+
+# Artefacts de test : pages injectees par le collecteur et captures d'ecran
+__*.html
 capture-*.png
-__smoke.html
-__preview-*.html
 
 
