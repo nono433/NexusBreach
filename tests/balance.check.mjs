@@ -1,4 +1,4 @@
-﻿import { simulate, investmentFromDeaths, META, RUN, WEAPONS } from './balance.model.mjs';
+﻿import { simulate, investmentFromDeaths, debitSoutenu, META, RUN, WEAPONS } from './balance.model.mjs';
 
 const scenarios = [
   { label: 'RANGER / PULSE / 1re partie (0 mort)', weaponId: 'pulse', deaths: 0, archetype: 'sustain' },
@@ -37,6 +37,17 @@ console.log(`  Degats  : x${maxDamage.toFixed(2)}  (amameliorations x${(1 + RUN.
 console.log(`  Cadence : x${maxRate.toFixed(2)}`);
 console.log(`  PV      : +${RUN.armor.max * RUN.armor.per + META.health.max * META.health.per}`);
 console.log(`  Reduction : ${Math.round(Math.min(0.68, RUN.stabilize.max * RUN.stabilize.per + META.reduction.max * META.reduction.per) * 100)} %`);
+
+console.log('\n=== DEBIT REELLEMENT SOUTENU (recharge comprise) ===');
+// raw ne compte pas la recharge, et le taux d'occupation varie de 67 a 79 %
+// selon l'arme. C'est ce tableau qui dit ce que vaut un changement de
+// rechargement, et de combien le joueur perd sur chaque arme du Ranger.
+console.log('  arme     | brut    | soutenu  | occupation');
+for (const id of ['pulse', 'scatter', 'smg', 'vector', 'cryo', 'rail', 'inferno', 'plasma']) {
+  const d = debitSoutenu(id);
+  console.log(`  ${id.padEnd(9)} | ${d.brut.toFixed(0).padStart(5)}   | ${d.soutenu.toFixed(0).padStart(6)}   |`
+    + `    ${(d.occupation * 100).toFixed(0)} %`);
+}
 
 console.log('\n=== VAGUE DE MORT PREVUE PAR CONFIGURATION ===');
 const results = [];

@@ -103,7 +103,28 @@ Faire tirer tous les ennemis paraissait avancé : chacun avait une réponse à d
 
 La règle à maintenir est une seule : **un type qui déclare `portee` sait tirer**. C'est tout ce que `avecTir` et l'IA ont besoin de savoir.
 
-Un projectile vaut `degats` fois les dégâts au contact de l'ennemi : le Chasseur 0,45, l'Alpha 0,80. Ces deux nombres ont été relevés après coup — `tir-distance.cjs` mesure 3,64 dégâts par projectile du Chasseur à la vague 7, ce que le modèle annonce exactement. Avant, c'était 0,30 et 2,43 : la moitié de ce que le tir fait aujourd'hui.
+Un projectile vaut `degats` fois les dégâts au contact de l'ennemi : Chasseur et Braise 0,45, Alpha 0,80, Forge-Monarque 0,85. Et `cadence` est un **multiplicateur d'intervalle**, pas un nombre de coups par seconde : le délai réel vaut `attackCooldown(vague) × cadence`, donc **tirer plus vite, c'est baisser la valeur**. Les Chasseurs sont à 1,15 et les Alpha à 1,75.
+
+`tests\tir-distance.cjs` mesure 3,64 dégâts par projectile de Chasseur à la vague 7, ce que le modèle annonce exactement.
+
+#### Le rechargement du Ranger
+
+Les huit armes du Ranger ont un rechargement allongé de 20 %. Ce n'est pas une valeur décorative : `balance.check.mjs` affiche le **débit réellement soutenu**, recharge comprise, parce que `dégâts × cadence` se trompe de 25 à 50 %.
+
+| Arme | Brut | Soutenu | Temps d'occupation |
+| --- | --- | --- | --- |
+| PULSE | 151 | 115 | 76 % |
+| SCATTER | 32 | 22 | 67 % |
+| NOVA (SMG) | 208 | 139 | 67 % |
+| VECTOR | 181 | 114 | 63 % |
+| FROST | 108 | 74 | 68 % |
+| RAIL | 132 | 87 | 66 % |
+| PYRO | 108 | 68 | 63 % |
+| PLASMA | 212 | 152 | 72 % |
+
+Le VECTOR ne tire que 63 % du temps : six balles, puis 1,9 s d'attente. C'est lui qui encaisse le plus (−6,2 % de débit soutenu), et c'est le moins cher en temps réel.
+
+Le modèle de survie, lui, reste calibré sur `raw` et ne voit donc pas ce changement : les integrationurs de `raw` ont été réglés dessus, et les corriger d'un coup décalerait toutes les vagues de mort. C'est un sujet à part, et il n'est pas réglé.
 
 Un projectile est visible par construction : cœur plus gros, enveloppe additive, et une traînée qui s'étire dans l'axe du tir. Il est arrêté par les obstacles à chaque image — le décor protège vraiment. Sa taille à l'écran n'est pas une impression : `tests\capture-projectile.cjs` la mesure et refuse de valider une capture sans projectile visible.
 

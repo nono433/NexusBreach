@@ -395,7 +395,7 @@ const ENEMY_TYPES = {
     // Le tireur : portee la plus longue, cadence la plus rapide, et un
     // projectile qui fait enfin mal. Il oblige a rester a distance, la ou les
     // autres AVANCENT, ce qui change la lecture du combat.
-    portee: 19, cadence: 1.5, vitesse: 25, annonce: 0.6, degats: 0.45
+    portee: 19, cadence: 1.15, vitesse: 25, annonce: 0.6, degats: 0.45
   }),
   brute: avecTir({
     name: 'Brute',
@@ -428,7 +428,7 @@ const ENEMY_TYPES = {
     bulk: 'heavy',
     elite: true,
     // Tir lourd a moyenne distance, annonce appreciable.
-    portee: 16, cadence: 2.3, vitesse: 19, annonce: 0.9, degats: 0.8
+    portee: 16, cadence: 1.75, vitesse: 19, annonce: 0.9, degats: 0.8
   })
 };
 
@@ -466,7 +466,7 @@ const FOUNDRY_ENEMY_TYPES = {
     headScale: 0.82,
     spikeCount: 3,
     // Le plus rapide en tir et en deplacement : il traverse l'arene.
-    portee: 18, cadence: 1.4, vitesse: 27, annonce: 0.55, degats: 0.45
+    portee: 18, cadence: 1.05, vitesse: 27, annonce: 0.55, degats: 0.45
   }),
   ironBrute: avecTir({
     name: 'Colosse de Laitier',
@@ -502,7 +502,7 @@ const FOUNDRY_ENEMY_TYPES = {
     headScale: 1.08,
     spikeCount: 9,
     elite: true,
-    portee: 17, cadence: 2.2, vitesse: 20, annonce: 0.85, degats: 0.85
+    portee: 17, cadence: 1.65, vitesse: 20, annonce: 0.85, degats: 0.85
   })
 };
 
@@ -699,7 +699,7 @@ const WEAPON_DEFINITIONS = {
     damage: 28,
     fireRate: 5.4,
     magazine: 30,
-    reload: 1.45,
+    reload: 1.75,
     pellets: 1,
     spread: 0,
     pierce: 0,
@@ -724,7 +724,7 @@ const WEAPON_DEFINITIONS = {
     damage: 19,
     fireRate: 1.7,
     magazine: 8,
-    reload: 1.9,
+    reload: 2.3,
     pellets: 7,
     spread: 0.075,
     pierce: 0,
@@ -749,7 +749,7 @@ const WEAPON_DEFINITIONS = {
     damage: 16,
     fireRate: 13,
     magazine: 48,
-    reload: 1.55,
+    reload: 1.85,
     pellets: 1,
     spread: 0.025,
     pierce: 0,
@@ -774,7 +774,7 @@ const WEAPON_DEFINITIONS = {
     damage: 98,
     fireRate: 1.85,
     magazine: 6,
-    reload: 1.6,
+    reload: 1.9,
     pellets: 1,
     spread: 0.003,
     pierce: 0,
@@ -799,7 +799,7 @@ const WEAPON_DEFINITIONS = {
     damage: 25,
     fireRate: 4.3,
     magazine: 20,
-    reload: 1.8,
+    reload: 2.15,
     pellets: 2,
     spread: 0.025,
     pierce: 0,
@@ -826,7 +826,7 @@ const WEAPON_DEFINITIONS = {
     damage: 132,
     fireRate: 1,
     magazine: 5,
-    reload: 2.15,
+    reload: 2.6,
     pellets: 1,
     spread: 0,
     pierce: 2,
@@ -851,7 +851,7 @@ const WEAPON_DEFINITIONS = {
     damage: 6,
     fireRate: 18,
     magazine: 90,
-    reload: 2.4,
+    reload: 2.9,
     pellets: 3,
     spread: 0.11,
     pierce: 0,
@@ -878,7 +878,7 @@ const WEAPON_DEFINITIONS = {
     damage: 92,
     fireRate: 2.3,
     magazine: 14,
-    reload: 2,
+    reload: 2.4,
     pellets: 1,
     spread: 0.01,
     pierce: 0,

@@ -26,9 +26,9 @@ export const ALPHA_CHANCE = 0.18;
 // valeurs sont celles des huit gabarits dans game.js.
 export const TIR = {
   trash: { tire: false },
-  swift: { tire: true, cadence: 1.5, degats: 0.45 },
+  swift: { tire: true, cadence: 1.15, degats: 0.45 },
   tank: { tire: false },
-  elite: { tire: true, cadence: 2.3, degats: 0.8 }
+  elite: { tire: true, cadence: 1.75, degats: 0.8 }
 };
 
 // Part de chaque type dans la population, avec ses degats au contact. La
@@ -108,15 +108,20 @@ export const ENEMIES = {
 // raw = degats x cadence x projectiles. eff = rendement reel en jeu
 // (dispersion qui fait manquer, portee courte, perforation qui ne touche
 // jamais tout le temps, brasure, explosion).
+//
+// mag et rech ne servent qu'au debit soutenu, calibre plus bas. Ils ne sont
+// pas dans raw parce que les integrator sont deja calibres dessus : changer raw
+// maintenant decalerait toutes les vagues de mort d un coup, pour une
+// correction qui merite son propre etude.
 export const WEAPONS = {
-  pulse: { raw: 28 * 5.4, eff: 1, price: 0, targets: 1 },
-  scatter: { raw: 19 * 1.7 * 7, eff: 0.55, price: 450, targets: 1 },
-  smg: { raw: 16 * 13, eff: 0.95, price: 650, targets: 1 },
-  vector: { raw: 98 * 1.85, eff: 1.15, price: 800, targets: 1 },
-  cryo: { raw: 25 * 4.3 * 2, eff: 0.95, price: 900, targets: 1 },
-  rail: { raw: 132 * 1, eff: 0.75, price: 950, targets: 2.2 },
-  inferno: { raw: 6 * 18 * 3, eff: 0.6, price: 1100, targets: 1 },
-  plasma: { raw: 92 * 2.3 + 60, eff: 0.9, price: 1400, targets: 1 },
+  pulse: { raw: 28 * 5.4, eff: 1, price: 0, targets: 1, degats: 28, cadence: 5.4, mag: 30, rech: 1.75 },
+  scatter: { raw: 19 * 1.7 * 7, eff: 0.55, price: 450, targets: 1, degats: 19, cadence: 1.7, mag: 8, rech: 2.3 },
+  smg: { raw: 16 * 13, eff: 0.95, price: 650, targets: 1, degats: 16, cadence: 13, mag: 48, rech: 1.85 },
+  vector: { raw: 98 * 1.85, eff: 1.15, price: 800, targets: 1, degats: 98, cadence: 1.85, mag: 6, rech: 1.9 },
+  cryo: { raw: 25 * 4.3 * 2, eff: 0.95, price: 900, targets: 1, degats: 25, cadence: 4.3, mag: 20, rech: 2.15 },
+  rail: { raw: 132 * 1, eff: 0.75, price: 950, targets: 2.2, degats: 132, cadence: 1, mag: 5, rech: 2.6 },
+  inferno: { raw: 6 * 18 * 3, eff: 0.6, price: 1100, targets: 1, degats: 6, cadence: 18, mag: 90, rech: 2.9 },
+  plasma: { raw: 92 * 2.3 + 60, eff: 0.9, price: 1400, targets: 1, degats: 92, cadence: 2.3, mag: 14, rech: 2.4 },
   // Sabres : les degats par frappe touchent slashTargets ennemis.
   twinSabers: { raw: 48 * 2.7, eff: 1, price: 0, targets: 1.75, melee: true },
   heavySaber: { raw: 108 * 1.85, eff: 1, price: 700, targets: 1, melee: true },
@@ -124,6 +129,25 @@ export const WEAPONS = {
   shuriken: { raw: 29 * 9, eff: 0.9, price: 1100, targets: 1 },
   shadowStep: { raw: 76 * 2.4, eff: 1, price: 1500, targets: 1.75, melee: true }
 };
+
+// Debit reellement soutenu, recharge comprise.
+//
+// Un pave qui ne compte que degats x cadence se trompe de 25 a 50 % : le joueur
+// passe une part de son temps a recharger, et cette part n est pas la meme selon
+// l'arme. Le VECTOR tire 6 fois puis attend 1,9 s : il ne tire que 67 % du
+// temps. C'est ce chiffre qui sert a juger un changement de rechargement, le
+// modele de survie, lui, reste calibre sur raw.
+export function debitSoutenu(id) {
+  const arme = WEAPONS[id];
+  if (!arme || arme.mag === undefined) return null;
+  const cadenceTenue = arme.mag / (arme.mag / arme.cadence + arme.rech);
+  return {
+    id,
+    brut: arme.degats * arme.cadence,
+    soutenu: arme.degats * cadenceTenue,
+    occupation: cadenceTenue / arme.cadence
+  };
+}
 
 // Investissement permanent : fonction du nombre de morts, car les crédits
 // ne sont gagnés qu'à la mort. C'est le levier de progression long terme.
