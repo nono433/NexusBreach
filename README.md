@@ -103,15 +103,20 @@ Faire tirer tous les ennemis paraissait avancé : chacun avait une réponse à d
 
 La règle à maintenir est une seule : **un type qui déclare `portee` sait tirer**. C'est tout ce que `avecTir` et l'IA ont besoin de savoir.
 
-Un projectile est visible par construction : cœur plus gros, enveloppe additive, et une traînée qui s'étire dans l'axe du tir. Il grossit en s'éloignant, et il est arrêté par les obstacles à chaque image — le décor protège vraiment. Sa taille à l'écran n'est pas une impression : `tests\capture-projectile.cjs` la mesure et refuse de valider une capture sans projectile visible.
+Un projectile vaut `degats` fois les dégâts au contact de l'ennemi : le Chasseur 0,45, l'Alpha 0,80. Ces deux nombres ont été relevés après coup — `tir-distance.cjs` mesure 3,64 dégâts par projectile du Chasseur à la vague 7, ce que le modèle annonce exactement. Avant, c'était 0,30 et 2,43 : la moitié de ce que le tir fait aujourd'hui.
+
+Un projectile est visible par construction : cœur plus gros, enveloppe additive, et une traînée qui s'étire dans l'axe du tir. Il est arrêté par les obstacles à chaque image — le décor protège vraiment. Sa taille à l'écran n'est pas une impression : `tests\capture-projectile.cjs` la mesure et refuse de valider une capture sans projectile visible.
 
 Pour voir les robots isolément, sans lancer une partie :
 
-`powershell
-node tests\preview.cjs "__preview-robots.html" "tests\preview-robots.png" 5081 1100 620
-`
+```powershell
+node tests\generer-apercu-robots.cjs   # regenere tests\apercu-robots.html
+node tests\capture-robots.cjs          # tests\preview-robots.png
+```
 
-	ests\coherence-robots.cjs compare les proportions de l'aperçu et celles du jeu. Elles sont recopiées à la main, et le test a déjà attrapé une divergence : l'aperçu montrait des jambes plus courtes que le jeu.
+L'aperçu n'est **pas recopié à la main** : `generer-apercu-robots.cjs` extrait le code du robot de `game.js`, et lit les couleurs et les échelles dans les gabarits. Une recopie dérive un jour, et l'aperçu ment alors qu'on le croyait fidèle. Il a été seizure une fois par le nettoyage d'avant push — il vivait dans `wwwroot` — et le test de cohérence échouait alors sur un fichier absent, sans rien dire du robot. Il est donc dans `tests\`, hors du site.
+
+`coherence-robots.cjs` reste nécessaire malgré la génération : le générateur pourrait extraire un bloc trop court, ouublier une constante, et l'aperçu montrerait alors un autre robot sans que rien ne le signale. Il vérifie onze constantes de proportion, les cinq couleurs et échelles, et la couleur de la visière.
 
 ## Tests
 
@@ -132,8 +137,10 @@ node tests\hud.cjs --tactile   # idem en mode tactile
 node tests\chevauchement.cjs   # cartes de l'Atelier de 1100 à 360 px
 node tests\roles-ennemis.cjs     # 4 Chargeurs, 4 Tireurs, et l'IA respecte le rôle
 node tests\equilibrage-tir.mjs   # ce que le tir coûte, en temps de survie
+node tests\tir-distance.cjs      # ce qu'un projectile inflige, mesuré dans le jeu
 node tests\pilote-cdp.cjs        # le pilote de navigateur est-il fiable ?
 node tests\capture-projectile.cjs # un projectile en vol, et sa taille en pixels
+node tests\capture-robots.cjs    # l'aperçu des robots est bien rendu
 ```
 
 `balance.model.mjs` contient les mêmes constantes que `game.js` — si tu changes une courbe dans le jeu, change-la aussi dans le modèle, sinon les tests mentent.
@@ -150,9 +157,21 @@ node tests\capture-projectile.cjs # un projectile en vol, et sa taille en pixels
 
 Le jeu ne peut pas jouer dans ces conditions : **aucune capture de jeu n'était possible**, et c'est pour ça que le rendu d'un projectile n'avait jamais été observé. Par le protocole DevTools, le navigateur tourne en temps réel — 38 images par seconde mesurées — et c'est le test qui décide quand lire la page et quand photographier.
 
-`capture-projectile.cjs` a un **contrôle négatif** : `--stub` remplace la sonde par une fonction qui ne voit jamais rien, et le test doit alors échouer. La version précédente ne pouvait pas échouer : elle photographiait un numéro d'image fixe sans savoir si un projectile existait, et produisait donc des images vides en ayant le droit de passer. Les deux diagnostics dont elle a besoin sont sur `window.__nexus`, qui est le point d'entrée de diagnostic du jeu :
+`capture-projectile.cjs` a un **contrôle négatif** : `--stub` remplace la sonde par une fonction qui ne voit jamais rien, et le test doit alors échouer. La version précédente ne pouvait pas échouer : elle photographiait un numéro d'image fixe sans savoir si un projectile existait, et produisait donc des images vides en ayant le droit de passer.
+
+`tir-distance.cjs` mesure ce qu'un projectile **inflige réellement**, et pas ce qu'on suppose. C'est nécessaire parce que la vie baisse aussi au contact : sans distinguer les deux origines, un test qui voit la barre diminuer croit mesurer le tir alors qu'il mesure n'importe quoi. Le jeu tient donc un journal des coups encaisses.
+
+Il a **deux contrôles négatifs**, parce qu'ils ne vérifient pas la même chose :
+
+| Option | Ce qu'elle falsifie | Ce que le test doit faire |
+| --- | --- | --- |
+| `--stub` | la sonde d'observation | échouer sur « aucun projectile vu en vol » |
+| `--attendu=9` | la valeur attendue | échouer sur la comparaison des dégâts |
+
+Les diagnostics dont ces deux tests ont besoin sont sur `window.__nexus`, qui est le point d'entrée de diagnostic du jeu :
 
 - `sonderProjectiles()` — ce que voit le joueur d'un projectile : distance, taille **en pixels**, position à l'écran. C'est ce chiffre qui a répondu à la plainte, et la réponse était 3 pixels.
+- `derniersDegats()` — les derniers coups encaissés, avec leur **origine** (`tir` ou `contact`) et un numéro d'ordre. Le numéro est indispensable : le journal est circulaire, donc sans lui un test qui le relit compte le même coup plusieurs fois.
 - `allerVague(n)` — sauter à une vague. Sans lui, la capture est impossible : un joueur immobile ne termine pas la vague 1, or la vague 1 ne contient que des Rôdeurs, et un Rôdeur ne tire pas.
 
 `hud.cjs` compare les blocs du HUD en **encre visible** (le texte) ou en boîte peinte (les boutons), jamais en boîte de conteneur : un élément de grille est étiré sur toute sa cellule, donc deux frères voisins se toucheraient toujours alors que leurs libellés sont bien séparés. Un contrôle négatif est documented dans le fichier : remettre les boutons d’action en bas doit faire échouer le test.

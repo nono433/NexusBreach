@@ -26,9 +26,9 @@ export const ALPHA_CHANCE = 0.18;
 // valeurs sont celles des huit gabarits dans game.js.
 export const TIR = {
   trash: { tire: false },
-  swift: { tire: true, cadence: 1.5, degats: 0.3 },
+  swift: { tire: true, cadence: 1.5, degats: 0.45 },
   tank: { tire: false },
-  elite: { tire: true, cadence: 2.3, degats: 0.55 }
+  elite: { tire: true, cadence: 2.3, degats: 0.8 }
 };
 
 // Part de chaque type dans la population, avec ses degats au contact. La

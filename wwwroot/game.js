@@ -392,10 +392,10 @@ const ENEMY_TYPES = {
     color: 0xffcf4a,
     score: 130,
     legs: 4,
-    // Le tireur : portee la plus longue, cadence la plus rapide, mais
-    // projectile faible. Il oblige a rester a distance, la ou les autres
-    // AVANCENT, ce qui change la lecture du combat.
-    portee: 19, cadence: 1.5, vitesse: 25, annonce: 0.6, degats: 0.3
+    // Le tireur : portee la plus longue, cadence la plus rapide, et un
+    // projectile qui fait enfin mal. Il oblige a rester a distance, la ou les
+    // autres AVANCENT, ce qui change la lecture du combat.
+    portee: 19, cadence: 1.5, vitesse: 25, annonce: 0.6, degats: 0.45
   }),
   brute: avecTir({
     name: 'Brute',
@@ -428,7 +428,7 @@ const ENEMY_TYPES = {
     bulk: 'heavy',
     elite: true,
     // Tir lourd a moyenne distance, annonce appreciable.
-    portee: 16, cadence: 2.3, vitesse: 19, annonce: 0.9, degats: 0.55
+    portee: 16, cadence: 2.3, vitesse: 19, annonce: 0.9, degats: 0.8
   })
 };
 
@@ -466,7 +466,7 @@ const FOUNDRY_ENEMY_TYPES = {
     headScale: 0.82,
     spikeCount: 3,
     // Le plus rapide en tir et en deplacement : il traverse l'arene.
-    portee: 18, cadence: 1.4, vitesse: 27, annonce: 0.55, degats: 0.3
+    portee: 18, cadence: 1.4, vitesse: 27, annonce: 0.55, degats: 0.45
   }),
   ironBrute: avecTir({
     name: 'Colosse de Laitier',
@@ -502,7 +502,7 @@ const FOUNDRY_ENEMY_TYPES = {
     headScale: 1.08,
     spikeCount: 9,
     elite: true,
-    portee: 17, cadence: 2.2, vitesse: 20, annonce: 0.85, degats: 0.6
+    portee: 17, cadence: 2.2, vitesse: 20, annonce: 0.85, degats: 0.85
   })
 };
 
@@ -4596,7 +4596,18 @@ function killEnemy(enemy) {
   disposeEnemy(enemy);
 }
 
-function damagePlayer(amount) {
+// Journal circulaire des derniers coups encaisses, avec leur origine.
+// Il sert aux tests, qui ne peuvent pas autrement distinguer un projectile d'un
+// contact : la barre de vie baisse dans les deux cas.
+//
+// Chaque entree porte un numero d ordre croissant. Sans lui, un test qui
+// relit le journal several fois compte le meme coup plusieurs fois, et peut
+// croire avoir mesure une rafale alors qu il n a vu qu un seul tir.
+const journalDegats = new Array(48).fill(null);
+let journalTour = 0;
+let journalCompteur = 0;
+
+function damagePlayer(amount, source) {
   if (state !== GAME_STATE.PLAYING || player.invulnerable > 0) return;
   const aegis = player.abilityId === 'aegis' && player.abilityTimer > 0 ? getAbilityDefinition('aegis') : null;
   // VOILE SOMBRE : l'invisibilite n'est pas cosmeticque, elle divise les
@@ -4609,6 +4620,17 @@ function damagePlayer(amount) {
   const actualDamage = Math.max(1, amount * (1 - damageReduction) * vanishFactor);
   damageTaken += actualDamage;
   player.health = Math.max(0, player.health - actualDamage);
+  // Journal des derniers coups encaisses, avec leur origine. Sans lui, on ne
+  // peut pas distinguer un coup de projectile d'un contact : la vie baisse dans
+  // les deux cas, et mesurer "ce que fait le tir" n'est alors qu'une deduction.
+  // Le journal est court et reutilise en boucle, donc il ne grossit pas.
+  journalDegats[journalTour] = {
+    seq: journalCompteur,
+    source: source || 'contact',
+    valeur: actualDamage
+  };
+  journalCompteur += 1;
+  journalTour = (journalTour + 1) % journalDegats.length;
   player.invulnerable = 0.16;
   player.shake = 0.7;
   damageFlashTimer = 0.12;
@@ -4834,7 +4856,7 @@ function updateProjectiles(delta) {
       const dz = projectile.mesh.position.z - player.position.z;
       const portee = 0.55 + projectile.radius;
       if (dx * dx + dy * dy + dz * dz < portee * portee) {
-        damagePlayer(projectile.damage);
+        damagePlayer(projectile.damage, 'tir');
         burstProjectile(projectile);
         retire = true;
       }
@@ -5009,7 +5031,7 @@ function updateEnemies(delta) {
       const mapAttackMultiplier = MAP_DEFINITIONS[currentMapIndex].attackCooldownMultiplier;
       enemy.attackCooldown = baseAttackCooldown * mapAttackMultiplier;
       enemy.attackPulse = 1;
-      damagePlayer(enemy.damage);
+      damagePlayer(enemy.damage, 'contact');
     }
 
     enemy.flashTime = Math.max(0, enemy.flashTime - delta);
@@ -6006,6 +6028,10 @@ function init() {
     // Sonde projectiles, pour la capture qui doit prouver qu un tir est
     // visible et mesurer combien de pixels il occupe.
     window.__nexus.sonderProjectiles = sonderProjectiles;
+    // Journal des coups encaisses, distingue par origine. C'est ce qui permet
+    // de mesurer ce que fait reellement un projectile, et non de le deduire
+    // d une baisse de la barre de vie qui peut aussi venir d un contact.
+    window.__nexus.derniersDegats = () => journalDegats.filter(Boolean);
     // Saut de vague, pour cette meme capture. Sans lui, elle est impossible :
     // un joueur immobile ne termine pas la vague 1, or la vague 1 ne contient
     // que des Radeurs, et un Radeur ne tire pas. Il n'y a donc aucun

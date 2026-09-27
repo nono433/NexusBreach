@@ -17,15 +17,31 @@
 // Node 24 fournit WebSocket et fetch, il n'y a donc rien a installer.
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
+const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-// Deux familles de ports distinctes, et c'est obligatoire : le serveur de
-// fichiers et le point d'entree DevTools ne peuvent pas se partager le meme
-// port, sinon /json/list repond 404 et l'on croit a un navigateur cassee.
-const PORTS_SERVEUR = [9411, 9412, 9413, 9414, 9415];
-const PORTS_DEVTOOLS = [9311, 9312, 9313, 9314, 9315];
+
+// Deux ports libres, distincts, demandes a chaque lancement.
+//
+// Les versions precedentes utilisaient des ports fixes. Un navigateur tue reste
+// quelques secondes avant de liberer le sien, et le suivant s'y accrochait : le
+// client DevTools se reconnectait alors a l'ancien navigateur, sur une autre
+// page, et lisait un etat qui n'etait pas le sien. C'est la cause des echecs
+// qui n'expliquaient rien. Le port se demande a l'OS, il n'y a plus rien a
+// deviner.
+function portLibre() {
+  return new Promise((resoudre) => {
+    const serveur = net.createServer();
+    serveur.unref();
+    serveur.on('error', () => resoudre(portLibre()));
+    serveur.listen(0, '127.0.0.1', () => {
+      const port = serveur.address().port;
+      serveur.close(() => resoudre(port));
+    });
+  });
+}
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -153,8 +169,11 @@ class Session {
 // Ouvre une page, attend qu'elle soit pilotable, et rend une session.
 async function ouvrir(page, racine, options = {}) {
   const { largeur = 480, hauteur = 360, budget = 0, query = '' } = options;
-  const port = PORTS_DEVTOOLS[0];
-  const portServeur = PORTS_SERVEUR[0];
+  const port = await portLibre();
+  // Le port du serveur de fichiers doit differer de celui de DevTools : sinon
+  // /json/list repond 404 et l'on croit a un navigateur casse.
+  let portServeur = await portLibre();
+  while (portServeur === port) portServeur = await portLibre();
   const profil = path.join(os.tmpdir(), 'nb-cdp-' + Math.random().toString(36).slice(2, 9));
   try { fs.rmSync(profil, { recursive: true, force: true }); } catch (e) {}
   const serveur = await servir(racine, portServeur, page);
