@@ -15,14 +15,13 @@ const BRANCH = 'main';
 const ROOT = path.join(__dirname, '..');
 const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
 
+// Le jeton n'est verifie qu'au moment de pousser, pas au chargement : ce
+// fichier est aussi importe par apercu-push.cjs pour ses regles d'exclusion,
+// et il sortait en erreur avant meme d'avoir expose quoi que ce soit.
 const token = process.env.GH_TOKEN;
-if (!token) {
-  console.error('GH_TOKEN absent.');
-  process.exit(1);
-}
 
 const headers = {
-  Authorization: `Bearer ${token}`,
+  Authorization: `Bearer ${token || ''}`,
   Accept: 'application/vnd.github+json',
   'X-GitHub-Api-Version': '2022-11-28',
   'User-Agent': 'opencode',
@@ -51,11 +50,20 @@ const IGNORED_DIRS = new Set(['_originaux', 'node_modules', '.git']);
 const IGNORED_DIR_PREFIXES = ['_edgeprofile'];
 // Les artefacts de test sont nommes __prefixe (collecteur injecte) et
 // capture-*.png : ils ne doivent jamais partir sur GitHub.
-const IGNORED_FILES = /^(__.*\.html|capture-.*\.png)$/;
+// Les artefacts de test sont nommes __prefixe (collecteur injecte) et les
+// captures d'ecran sont des PNG. Le projet n'a aucun PNG legitime : son seul
+// visuel est favicon.svg. On les ecarte donc tous plutot que d'entretenir une
+// liste de prefixes a jour, ce que les deux noms anterieurs ont deja rate.
+const IGNORED_FILES = /^(__.*\.html|.*\.png)$/;
 
 function ignoreDirectory(name) {
   return IGNORED_DIRS.has(name) || IGNORED_DIR_PREFIXES.some((prefix) => name.startsWith(prefix));
 }
+
+// Exporte pour que les autres scripts ne recopient pas ces regles :
+// apercu-push le faisait, et il a diverge, laissant passer les PNG que cette
+// version ecarte. Une regle dupliquee finit toujours par mentir.
+module.exports = { IGNORED_DIRS, IGNORED_DIR_PREFIXES, IGNORED_FILES, ignoreDirectory };
 
 function collect(dir, base, out) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -72,7 +80,14 @@ function collect(dir, base, out) {
   return out;
 }
 
-(async () => {
+// Ce corps ne s'execute que si le script est lance directement. Sans ce
+// garde, un simple require par apercu-push.cjs declenchait le push, ou a tout
+// le moins une erreur sur le jeton manquant.
+if (require.main === module) (async () => {
+  if (!token) {
+    console.error('GH_TOKEN absent : rien n a ete pousse.');
+    process.exit(1);
+  }
   const files = collect(ROOT, ROOT, []).sort();
   console.log(`${files.length} fichiers a publier :`);
   files.forEach((file) => console.log(`  ${file}`));

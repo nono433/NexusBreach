@@ -5,12 +5,11 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const IGNORED_DIRS = new Set(['_originaux', 'node_modules', '.git']);
-const IGNORED_DIR_PREFIXES = ['_edgeprofile'];
-const IGNORED_FILES = /^(__.*\.html|capture-.*\.png)$/;
-
-function ignoreDirectory(name) {
-  return IGNORED_DIRS.has(name) || IGNORED_DIR_PREFIXES.some((p) => name.startsWith(p));
-}
+// Regles importees, pas recopiees. Ce fichier les avait dupliquees, et sa
+// copie avait diverge de celle du push : elle laissait passer les captures
+// PNG. Un apercu qui montre un fichier different de ce qui part sur GitHub
+// ne sert a rien.
+const { IGNORED_FILES, ignoreDirectory } = require('./push-github.cjs');
 
 const out = [];
 function collect(dir) {

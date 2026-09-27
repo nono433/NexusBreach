@@ -331,6 +331,7 @@ const ENEMY_TYPES = {
     damage: 9,
     radius: 0.62,
     scale: 0.88,
+    bulk: 'light',
     color: 0x55f6c1,
     score: 100,
     legs: 4
@@ -342,6 +343,7 @@ const ENEMY_TYPES = {
     damage: 7,
     radius: 0.5,
     scale: 0.78,
+    bulk: 'light',
     color: 0xffcf4a,
     score: 130,
     legs: 4
@@ -353,6 +355,7 @@ const ENEMY_TYPES = {
     damage: 19,
     radius: 0.95,
     scale: 1.28,
+    bulk: 'heavy',
     color: 0xff5b42,
     score: 260,
     legs: 6
@@ -363,10 +366,16 @@ const ENEMY_TYPES = {
     speed: ALPHA_STATS.speed,
     damage: ALPHA_STATS.damage,
     radius: ALPHA_STATS.radius,
-    scale: 2.05,
+    // L'echelle de 2.05 datait de l'ancien corps compact. Appliquee a un
+    // robot de 2.3 unites, elle donnait un monstre de pres de 5 unites, deux
+    // fois et demi le Chasseur : la silhouette traduisait une taille, pas une
+    // puissance. Le rayon est augmente en compensation pour conserver une
+    // emprise au sol comparable.
+    scale: 1.5,
     color: 0xff2d85,
     score: 1200,
     legs: 6,
+    bulk: 'heavy',
     elite: true
   }
 };
@@ -425,8 +434,9 @@ const FOUNDRY_ENEMY_TYPES = {
     hp: ALPHA_STATS.hp * 1.3,
     speed: ALPHA_STATS.speed * 0.95,
     damage: ALPHA_STATS.damage * 1.25,
-    radius: ALPHA_STATS.radius * 1.1,
-    scale: 2.2,
+    radius: ALPHA_STATS.radius * 1.32,
+    scale: 1.6,
+    bulk: 'heavy',
     color: 0xff2d85,
     armorColor: 0x2c1830,
     accentColor: 0xffc857,
@@ -3154,6 +3164,279 @@ function applyWeaponVisual(target = weapon) {
   target.userData.muzzleLight?.color.setHex(definition.tracerColor);
 }
 
+// ===========================================================================
+// Robot humanoide
+//
+// Les ennemis etaient des icosaedres : une masse informee avec des pattes. Le
+// nouveau gabarit s'inspire d'un robot humanoide cubique, corps sombre,
+// contours lumineux et visee claire sur la tete.
+//
+// Trois contraintes ont dirige la construction :
+//
+// 1. Le cout de rendu. Chaque partie posee est un appel de dessin, et jusqu'a
+//    onze ennemis peuvent etre vivants : un robot de vingt-quatre morceaux
+//    aurait triple l'appel de dessin. Les parties immobiles sont donc
+//    fusionnees en une geometrie par materiau. Seules les parties animees
+//    (les deux jambes, les deux bras) gardent un maillage chacune.
+//
+// 2. La couleur de chaque type est un signal de lecture : le joueur identifie
+//    une menace a sa couleur en une fraction de seconde. Chaque type garde
+//    donc exactement sa couleur d'origine, seule la forme change.
+//
+// 3. Les contrats utilises ailleurs sont preserves : hitMeshes (ciblage),
+//    legPivots (animation de marche), materials.body et materials.armor
+//    (flash de degat), enemy.head et enemy.headRadius (detection du headshot).
+// ===========================================================================
+
+// Boite unite partagee : toutes les parties en derivent, et les geometries
+// sont ensuite partagees entre les ennemis, seules les couleurs changent.
+const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+
+// Fusionne une liste de boites decrites en local (taille, position, rotation)
+// en une seule BufferGeometry. Sans cela, chaque robot coûterait une
+// vingtaine d'appels de dessin.
+function mergeBoxParts(parts) {
+  const positions = [];
+  const normals = [];
+  const indices = [];
+  const matrix = new THREE.Matrix4();
+  const normalMatrix = new THREE.Matrix3();
+  const quaternion = new THREE.Quaternion();
+  const position = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+  const euler = new THREE.Euler();
+  const vertex = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+  let offset = 0;
+
+  for (const part of parts) {
+    position.set(part.x || 0, part.y || 0, part.z || 0);
+    euler.set(part.rx || 0, part.ry || 0, part.rz || 0);
+    quaternion.setFromEuler(euler);
+    scale.set(part.w, part.h, part.d);
+    matrix.compose(position, quaternion, scale);
+    normalMatrix.getNormalMatrix(matrix);
+
+    const vertexAttribute = unitBoxGeometry.attributes.position;
+    const normalAttribute = unitBoxGeometry.attributes.normal;
+    for (let i = 0; i < vertexAttribute.count; i += 1) {
+      vertex.fromBufferAttribute(vertexAttribute, i).applyMatrix4(matrix);
+      positions.push(vertex.x, vertex.y, vertex.z);
+      // La normale ne subit pas l'echelle : transformee par une matrice non
+      // uniforme elle doit etre renormalisee, sinon l'ecclairage des epaules
+      // et des tibias est faux.
+      normal.fromBufferAttribute(normalAttribute, i).applyMatrix3(normalMatrix).normalize();
+      normals.push(normal.x, normal.y, normal.z);
+    }
+    const indexAttribute = unitBoxGeometry.index;
+    for (let i = 0; i < indexAttribute.count; i += 1) {
+      indices.push(indexAttribute.getX(i) + offset);
+    }
+    offset += vertexAttribute.count;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+  return geometry;
+}
+
+// Un pave : structure sombre ou lisere lumineux. Meme fonction, deux
+// materiaux : la distinction vient du materiau, pas de la forme.
+function box(x, y, z, w, h, d, rotation) {
+  const part = { x, y, z, w, h, d };
+  if (rotation) Object.assign(part, rotation);
+  return part;
+}
+
+// Epaisseur des liseres. Ils remplacent les contours neon de la reference :
+// WebGL ignore l'epaisseur des lignes, un trait d'un pixel ne se voit pas,
+// un pave plat de quelques millimetres en revanche se voit sous tout
+// eclairage.
+const LISERE = 0.024;
+
+// Angle de levee des bras, en radians. Le bras pend au repos (0) et se leve
+// presque a l'horizontale quand l'ennemi arme une attaque (1.35).
+const BRAS_ARME = 1.35;
+
+// Construit le robot et retourne les maillages a attacher a la racine.
+// three est passe en parametre : ce fichier n'importe pas Three.js, seul
+// game.js le fait, et cela evite un import circulaire.
+function buildHumanoid(three, template, materials, options) {
+  const { isAlpha, headSize, shadows } = options;
+
+  // Silhouette : la masse du buste et la largeur des epaules distinguent les
+  // types. Un robot humanoide a deux jambes pour tous : c'est le nombre de
+  // pattes qui changeait avant, et cela rendait les limaces et les brutes
+  // illisibles.
+  const lourd = isAlpha || template.bulk === 'heavy';
+  const leger = template.bulk === 'light';
+
+  const busteL = lourd ? 0.66 : leger ? 0.5 : 0.57;
+  const busteH = lourd ? 0.68 : leger ? 0.46 : 0.58;
+  const busteD = lourd ? 0.46 : leger ? 0.36 : 0.41;
+
+  const epaule = lourd ? 0.66 : leger ? 0.48 : 0.56;
+  const brasLong = lourd ? 0.4 : 0.36;
+  const avantBrasLong = lourd ? 0.38 : 0.34;
+  const cuisseLong = lourd ? 0.5 : 0.46;
+  const tibiaLong = lourd ? 0.46 : 0.42;
+  const piedH = 0.1;
+
+  // Verticale construite depuis le sol, et non depuis le buste. Le gabarit
+  // precedent partait de la taille et posait la hanche trop bas : les pieds
+  // passaient sous le sol et le robot paraissait accroupi. Ancrer sur le sol
+  // garantit que les pieds reposent dessus, quelle que soit la taille du
+  // buste.
+  const hancheY = piedH + tibiaLong + cuisseLong;
+  const bassinY = hancheY + 0.12;
+  const abdomenY = bassinY + 0.17;
+  const busteY = abdomenY + busteH / 2 + 0.07;
+  const hautBuste = busteY + busteH / 2;
+  const basBuste = busteY - busteH / 2;
+  const epauleY = hautBuste - 0.09;
+  const xEpaule = epaule / 2 + 0.08;
+
+  // --- Corps sombre, parties immobiles fusionnees --------------------------
+  const structure = [
+    box(0, busteY, 0, busteL, busteH, busteD),
+    box(0, abdomenY, 0, busteL * 0.8, 0.2, busteD * 0.86),
+    box(0, bassinY, 0, busteL * 0.88, 0.2, busteD * 0.9),
+    box(-xEpaule, epauleY, 0, 0.17, 0.22, busteD * 0.88),
+    box(xEpaule, epauleY, 0, 0.17, 0.22, busteD * 0.88)
+  ];
+  const structureMesh = new three.Mesh(mergeBoxParts(structure), materials.body);
+  structureMesh.castShadow = shadows;
+
+  // --- Liseres lumineux ----------------------------------------------------
+  const trims = [];
+  [-1, 1].forEach((side) => {
+    trims.push(
+      box(0, hautBuste, busteD / 2, busteL, LISERE, LISERE),
+      box(0, basBuste, busteD / 2, busteL, LISERE, LISERE),
+      box(side * busteL / 2, busteY, busteD / 2, LISERE, busteH, LISERE),
+      box(0, hautBuste, -busteD / 2, busteL, LISERE, LISERE),
+      box(0, basBuste, -busteD / 2, busteL, LISERE, LISERE)
+    );
+  });
+  trims.push(
+    box(0, bassinY, busteD / 2, busteL * 0.88, LISERE, LISERE),
+    box(0, busteY, busteD / 2 + 0.006, LISERE, busteH * 0.78, LISERE)
+  );
+
+  // --- Tete, cou et visee --------------------------------------------------
+  // La tete reste un maillage separe : enemy.head et sa position monde servent
+  // a la detection du headshot.
+  const headY = hautBuste + headSize * 0.72;
+  const head = new three.Mesh(
+    new three.BoxGeometry(headSize * 2, headSize * 1.55, headSize * 1.7),
+    materials.body
+  );
+  head.position.set(0, headY, 0);
+  head.castShadow = shadows;
+  head.userData.headshot = true;
+
+  // Cou, pour que le robot ne semble pas decapite.
+  trims.push(
+    box(0, headY + headSize * 0.78, 0, headSize * 2.02, LISERE * 0.7, headSize * 1.72),
+    box(0, headY - headSize * 0.78, 0, headSize * 2.02, LISERE * 0.7, headSize * 1.72)
+  );
+
+  const neckMesh = new three.Mesh(
+    mergeBoxParts([box(0, hautBuste + 0.04, 0, headSize * 0.8, 0.1, headSize * 0.8)]),
+    materials.body
+  );
+
+  // Visee : une fente horizontale lumineuse, le signe de reconnaissance de la
+  // reference. Plus large que haute, c'est ce qui rend le regard lisible.
+  const visor = new three.Mesh(
+    new three.BoxGeometry(headSize * 1.72, headSize * 0.3, 0.03),
+    materials.visor
+  );
+  visor.position.set(0, headY + headSize * 0.12, headSize * 0.86);
+
+  const trimMesh = new three.Mesh(mergeBoxParts(trims), materials.trim);
+
+  // --- Bras : un pivot par epaule, anime ------------------------------------
+  // Le pivot est a l'epaule et le bras pend vers le bas, donc une rotation
+  // autour de X leve le bras vers l'avant : c'est le geste d'arme.
+  const brasGeometry = mergeBoxParts([
+    box(0, -brasLong / 2, 0, 0.15, brasLong, 0.16),
+    box(0, -brasLong - avantBrasLong / 2, 0, 0.14, avantBrasLong, 0.15),
+    // Main
+    box(0, -brasLong - avantBrasLong - 0.06, 0.01, 0.15, 0.13, 0.17)
+  ]);
+  const brasTrim = mergeBoxParts([
+    box(0.076, -brasLong / 2, 0, 0.02, brasLong * 0.85, 0.02),
+    box(0, -brasLong - avantBrasLong / 2, 0.076, 0.13, 0.02, 0.02)
+  ]);
+
+  const armPivots = [];
+  [-1, 1].forEach((side) => {
+    const pivot = new three.Group();
+    pivot.position.set(side * xEpaule, epauleY - 0.1, 0);
+    const mesh = new three.Mesh(brasGeometry, materials.body);
+    mesh.castShadow = shadows;
+    pivot.add(mesh);
+    pivot.add(new three.Mesh(brasTrim, materials.trim));
+    armPivots.push({ pivot, side });
+  });
+
+  // --- Jambes --------------------------------------------------------------
+  // La jambe pend depuis la hanche et descend jusqu'au sol : le pivot est a
+  // hancheY et la somme cuisse + tibia + pied vaut exactement hancheY, donc le
+  // pied repose sur y = 0.
+  const jambeGeometry = mergeBoxParts([
+    box(0, -cuisseLong / 2, 0, 0.2, cuisseLong, 0.21),
+    box(0, -cuisseLong - tibiaLong / 2 + 0.02, 0, 0.17, tibiaLong, 0.18),
+    // Pied avance vers l'avant, comme sur la reference.
+    box(0, -cuisseLong - tibiaLong - piedH / 2, 0.05, 0.21, piedH, 0.31)
+  ]);
+  const jambeTrim = mergeBoxParts([
+    box(0.101, -cuisseLong / 2, 0, 0.02, cuisseLong * 0.9, 0.02),
+    box(-0.101, -cuisseLong / 2, 0, 0.02, cuisseLong * 0.9, 0.02),
+    box(0, -cuisseLong - tibiaLong / 2 + 0.02, 0.091, 0.17, 0.02, 0.02),
+    box(0, -cuisseLong - tibiaLong - piedH / 2, 0.19, 0.21, 0.02, 0.14)
+  ]);
+
+  const legPivots = [];
+  [-1, 1].forEach((side, index) => {
+    const pivot = new three.Group();
+    pivot.position.set(side * busteL * 0.26, hancheY, 0);
+    const mesh = new three.Mesh(jambeGeometry, materials.body);
+    mesh.castShadow = shadows;
+    pivot.add(mesh);
+    pivot.add(new three.Mesh(jambeTrim, materials.trim));
+    // Phase decalee de pi : sans cela les deux jambes oscillent ensemble et le
+    // robot avance en sautant sur deux pieds joints.
+    legPivots.push({ pivot, side, phase: index * Math.PI });
+  });
+
+  return {
+    structureMesh,
+    neckMesh,
+    trimMesh,
+    head,
+    visor,
+    armPivots,
+    legPivots,
+    busteY
+  };
+}
+
+// Anime les bras. armement vaut 0 au repos et 1 les bras leves : l'appel qui
+// arme une attaque n'a plus qu'a regler cette valeur, que ce soit un coup de
+// grappin ou un tir.
+function animerBras(armPivots, armement) {
+  const levee = Math.max(0, Math.min(1, armement)) * BRAS_ARME;
+  for (const { pivot, side } of armPivots) {
+    pivot.rotation.x = -levee;
+    // Legere ouverture vers l'exterieur : un bras parfaitement vertical lit
+    // moins bien qu'un bras legerement ecarte.
+    pivot.rotation.z = side * (0.1 + levee * 0.16);
+  }
+}
 function createEnemyMaterials(template) {
   const color = template.color;
   const armorColor = template.armorColor || 0x1b2932;
@@ -3179,7 +3462,21 @@ function createEnemyMaterials(template) {
   });
   const glow = new THREE.MeshBasicMaterial({ color: accentColor });
   const eye = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  return { body, armor, glow, eye, accentColor };
+  // Lisere lumineux : ce qui remplace les contours neons de la reference. Non
+  // eclairable et additif, il reste lumineux meme dans le noir de l'arene :
+  // c'est ce qui donne au robot sa silhouette de night club.
+  const trim = new THREE.MeshBasicMaterial({
+    color: accentColor,
+    transparent: true,
+    opacity: 0.92,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  // Visee : le meme bleu que sur la reference, quelle que soit la couleur du
+  // type. Volontaire : l'identite du type se lit sur le lisere et le buste, la
+  // visee sert a repeter ou est la tete, pas a designer l'ennemi.
+  const visor = new THREE.MeshBasicMaterial({ color: 0x9ffcff, transparent: true, opacity: 0.72 });
+  return { body, armor, glow, eye, trim, visor, accentColor };
 }
 
 function makeHealthBar(color) {
@@ -3219,69 +3516,51 @@ function createEnemy(typeKey, level) {
   auraLight.visible = PERFORMANCE_PROFILE.enemyAuraLights && (isAlpha || elite);
   root.add(auraLight);
 
-  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.68, 1), materials.body);
-  body.position.y = 0.92;
-  body.scale.set(...(template.bodyScale || [1.08, 0.9, 0.82]));
-  body.castShadow = PERFORMANCE_PROFILE.shadows;
-  root.add(body);
-  hitMeshes.push(body);
-
-  const chestPlate = new THREE.Mesh(new THREE.DodecahedronGeometry(0.46, 0), materials.armor);
-  chestPlate.position.set(0, 0.95, 0.36);
-  chestPlate.scale.set(1.05, 0.75, 0.32);
-  chestPlate.rotation.x = -0.12;
-  root.add(chestPlate);
-  hitMeshes.push(chestPlate);
-
-  const headSize = (isAlpha ? 0.56 : 0.39) * (template.headScale || 1);
-  const head = new THREE.Mesh(new THREE.OctahedronGeometry(headSize, 0), materials.body);
-  head.position.set(0, 1.58, 0.03);
-  head.rotation.y = Math.PI / 4;
-  head.castShadow = PERFORMANCE_PROFILE.shadows;
-  root.add(head);
-  hitMeshes.push(head);
-  head.userData.headshot = true;
-
-  const eyeGeometry = new THREE.SphereGeometry(isAlpha ? 0.09 : 0.065, 8, 6);
-  [-0.15, 0.15].forEach((x) => {
-    const eye = new THREE.Mesh(eyeGeometry, materials.eye);
-    eye.position.set(x, 1.62, isAlpha ? 0.51 : 0.36);
-    root.add(eye);
-    hitMeshes.push(eye);
+  // Gabarit humanoide cubique : corps sombre, contours luminos, visee claire.
+  // Les couleurs de chaque type sont inchangees, seule la forme differe.
+  const headSize = (isAlpha ? 0.38 : 0.3) * (template.headScale || 1);
+  const robot = buildHumanoid(THREE, template, materials, {
+    isAlpha,
+    headSize,
+    shadows: PERFORMANCE_PROFILE.shadows
   });
+  root.add(robot.structureMesh, robot.neckMesh, robot.trimMesh, robot.head, robot.visor);
+  robot.armPivots.forEach(({ pivot }) => root.add(pivot));
+  robot.legPivots.forEach(({ pivot }) => root.add(pivot));
+  // La structure, la tete et les segments de bras et de jambes sont
+  // individuellement ciblables : un robot est un assemblage, et viser le buste
+  // ou la tete doit rester deux gestes distincts.
+  hitMeshes.push(robot.structureMesh, robot.neckMesh, robot.head);
+  robot.armPivots.forEach(({ pivot }) => pivot.children.forEach((mesh) => hitMeshes.push(mesh)));
+  robot.legPivots.forEach(({ pivot }) => pivot.children.forEach((mesh) => hitMeshes.push(mesh)));
+  legPivots.push(...robot.legPivots);
+  const armPivots = robot.armPivots;
+  const head = robot.head;
+  const body = robot.structureMesh;
+  const visor = robot.visor;
 
+  // Les pattes cylindriques de l'ancien gabarit ont disparu : le robot a ses
+  // propres jambes, et conserver les deux dessinait huit membres.
   const spineCount = template.spikeCount || (isAlpha ? 7 : 4);
   for (let i = 0; i < spineCount; i += 1) {
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.45, 4), materials.glow);
-    spike.position.set((i % 2 ? -1 : 1) * 0.47, 0.65 + Math.floor(i / 2) * 0.25, -0.12 - (i % 2) * 0.12);
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.38, 4), materials.glow);
+    spike.position.set((i % 2 ? -1 : 1) * 0.3, 0.72 + Math.floor(i / 2) * 0.24, -0.2 - (i % 2) * 0.1);
     spike.rotation.z = (i % 2 ? -1 : 1) * -0.45;
     root.add(spike);
   }
 
-  const fastLegs = typeKey === 'hunter' || typeKey === 'emberStalker';
-  const crawlerLegs = typeKey === 'crawler' || typeKey === 'slagCrawler';
-  const legRadius = fastLegs ? 0.055 : crawlerLegs ? 0.065 : 0.09;
-  const legLength = fastLegs ? 0.62 : 0.75;
-  const legGeometry = new THREE.CylinderGeometry(legRadius * 0.75, legRadius, legLength, 5);
-  for (let i = 0; i < template.legs; i += 1) {
-    const side = i % 2 === 0 ? -1 : 1;
-    const row = Math.floor(i / 2);
-    const pivot = new THREE.Group();
-    pivot.position.set(side * 0.45, 0.75 - row * 0.1, row * 0.35 - 0.18);
-    const leg = new THREE.Mesh(legGeometry, materials.armor);
-    leg.position.y = -legLength / 2;
-    leg.rotation.z = side * 0.28;
-    leg.castShadow = PERFORMANCE_PROFILE.shadows;
-    pivot.add(leg);
-    root.add(pivot);
-    legPivots.push({ pivot, side, phase: i * Math.PI * 0.5 });
-  }
-
+  // Hitbox : une boite alignee sur le buste plutot qu'un cylindre. Le cylindre
+  // englobait la tete, ce qui rendait le test de headshot geometrique et
+  // expliquait le bug corrige plus tot. La tete a maintenant sa propre sphere
+  // de test, donc le buste peut etre une boite plus juste.
+  // La hauteur suit la verticale reelle du robot et non une valeur en dur : le
+  // robot fait pres de 2.3 unites de haut, une hitbox de 1.9 laissait le haut
+  // du buste et les epaules hors de portee.
   const hitbox = new THREE.Mesh(
-    new THREE.CylinderGeometry(template.radius * 0.9, template.radius, 2.05 * template.scale, 8),
+    new THREE.BoxGeometry(template.radius * 1.75, robot.busteY * 1.5, template.radius * 1.6),
     new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false })
   );
-  hitbox.position.y = 1.05 * template.scale;
+  hitbox.position.y = robot.busteY * 0.75;
   root.add(hitbox);
   hitMeshes.push(hitbox);
 
@@ -3320,10 +3599,12 @@ function createEnemy(typeKey, level) {
     root,
     body,
     head,
+    visor,
     headRadius: headSize * template.scale,
     materials,
     hitMeshes,
     legPivots,
+    armPivots,
     healthBar: healthBar.fill,
     hp: maxHealth,
     maxHealth,
@@ -3335,6 +3616,9 @@ function createEnemy(typeKey, level) {
     attackCooldown: 0.25 + Math.random() * 0.5,
     flashTime: 0,
     attackPulse: 0,
+    // Valeur d'armement des bras, 0 au repos et 1 leves. Le tir a distance
+    // la pilotera, et l'attaque au contact s'en sert deja.
+    armement: 0,
     slowTimer: 0,
     slowMultiplier: 1,
     burnTimer: 0,
@@ -4350,6 +4634,13 @@ function updateEnemies(delta) {
       pivot.rotation.x = Math.sin(elapsed * (fastLegs ? 10 : 7) + phase) * (fastLegs ? 0.55 : 0.35);
       pivot.rotation.z = side * (0.06 + Math.cos(elapsed * 6 + phase) * 0.04);
     });
+    // Bras : ils se montent des que l'ennemi arme une attaque. attackPulse
+    // retombe vite de lui-meme, donc le geste est court et se lit.
+    enemy.armement = Math.max(enemy.armement * 0.86, enemy.attackPulse);
+    animerBras(enemy.armPivots, enemy.armement);
+    // La visee s'eclaircit a l'armement : c'est le seul signe avant-coureur
+    // dont le joueur dispose, donc il doit rester lisible de loin.
+    enemy.visor.material.opacity = 0.72 + enemy.armement * 0.28;
     enemy.root.position.y = Math.sin(elapsed * 5.5 + enemy.seed) * 0.045;
     enemy.healthBar.scale.x = Math.max(0.001, enemy.hp / enemy.maxHealth);
     enemy.healthBar.position.x = -0.49 * (1 - enemy.hp / enemy.maxHealth);

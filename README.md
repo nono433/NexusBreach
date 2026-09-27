@@ -80,12 +80,35 @@ Quelques différences avec le PC, assumées :
 
 Si tu veux tester les commandes tactiles depuis un ordinateur, ajoute `?tactile=1` à l’adresse.
 
+### Les ennemis
+
+Ce sont des **robots humanoïdes cubiques** : corps sombre, contours lumineux, visière cyan. Tout est construit en code, à partir de boîtes, sans aucun fichier 3D externe.
+
+- Chaque type garde sa couleur d'origine (vert, jaune, rouge, rose) : c'est un signal de lecture, le joueur repère une menace en un coup d'œil.
+- La silhouette se distingue par la masse du buste, pas par le nombre de pattes. Un robot humanoïde a deux jambes, quel que soit le type.
+- Les parties immobiles sont fusionnées en une géométrie par matériau. Sans cela, chaque robot coûterait une vingtaine d'appels de dessin, et il peut y avoir onze ennemis à l'écran.
+- **Les bras s'animent** : ils se lèvent quand l'ennemi arme une attaque. Le tir à distance s'appuiera sur le même geste.
+- La hitbox est une boîte alignée sur le buste, et non un cylindre qui englobait la tête. C'est la cause du bug de headshot corrigé plus haut.
+
+Pour voir les robots isolément, sans lancer une partie :
+
+`powershell
+node tests\preview.cjs "__preview-robots.html" "tests\preview-robots.png" 5081 1100 620
+`
+
+	ests\coherence-robots.cjs compare les proportions de l'aperçu et celles du jeu. Elles sont recopiées à la main, et le test a déjà attrapé une divergence : l'aperçu montrait des jambes plus courtes que le jeu.
+
 ## Tests
 
 ```powershell
 node tests\headshot.test.mjs   # géométrie du headshot (15 cas)
 node tests\balance.check.mjs   # vague de mort par configuration
-node tests\encodage.cjs        # double encodage UTF-8
+node tests\alpha.mjs              # les Alpha, avant / apres correction
+node tests\zone-morte.cjs          # constante lue avant sa declaration
+node tests\coherence-robots.cjs    # l'apercu des robots ressemble au jeu
+node tests\sauvegarde-ancienne.cjs # sauvegarde d'avant le split des classes
+node tests\garde-demarrage.cjs     # un echec au demarrage est signale
+node tests\encodage.cjs            # double encodage UTF-8
 node tests\smoke.cjs           # jeu réel dans un navigateur headless (Ranger)
 node tests\assassin.cjs        # classe Assassin : atelier, frappe, dash
 node tests\tactile.cjs         # 13 étapes : joystick, visée, tir auto, pause, atelier

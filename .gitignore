@@ -20,8 +20,9 @@ Thumbs.db
 _originaux/
 _edgeprofile*/
 
-# Artefacts de test : pages injectees par le collecteur et captures d'ecran
+# Artefacts de test : pages injectees par le collecteur et captures d'ecran.
+# Aucun PNG legitime dans le projet, le seul visuel etant favicon.svg.
 __*.html
-capture-*.png
+*.png
 
 
