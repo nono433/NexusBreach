@@ -90,6 +90,21 @@ Ce sont des **robots humanoïdes cubiques** : corps sombre, contours lumineux, v
 - **Les bras s'animent** : ils se lèvent quand l'ennemi arme une attaque. Le tir à distance s'appuiera sur le même geste.
 - La hitbox est une boîte alignée sur le buste, et non un cylindre qui englobait la tête. C'est la cause du bug de headshot corrigé plus haut.
 
+#### Deux rôles, et un seul
+
+Un type sur deux sait tirer. Ce n'est pas une question de réglage, c'est la décision qui rend le jeu lisible.
+
+Faire tirer tous les ennemis paraissait avancé : chacun avait une réponse à distance. En jeu, cela supprimait le rôle de proximité. Foncer sur un ennemi devenait un automatisme, et il ne restait plus rien à décider. La moitié de la population est donc **Chargeuse** : elle avance, et ne sait rien faire d'autre. L'autre moitié est **Tireuse** : elle se stabilise au loin et couvre le groupe.
+
+| Rôle | Types | Ce que ça impose |
+| --- | --- | --- |
+| Chargeur | Rôdeur, Brute, et leurs équivalents Fonderie | Les abattre avant qu'ils arrivent, ou tenir la distance |
+| Tireur | Chasseur, Alpha | Les approcher pour les faire taire, ou chercher un couvert |
+
+La règle à maintenir est une seule : **un type qui déclare `portee` sait tirer**. C'est tout ce que `avecTir` et l'IA ont besoin de savoir.
+
+Un projectile est visible par construction : cœur plus gros, enveloppe additive, et une traînée qui s'étire dans l'axe du tir. Il grossit en s'éloignant, et il est arrêté par les obstacles à chaque image — le décor protège vraiment. Sa taille à l'écran n'est pas une impression : `tests\capture-projectile.cjs` la mesure et refuse de valider une capture sans projectile visible.
+
 Pour voir les robots isolément, sans lancer une partie :
 
 `powershell
@@ -115,9 +130,30 @@ node tests\tactile.cjs         # 13 étapes : joystick, visée, tir auto, pause,
 node tests\hud.cjs             # collisions du HUD en paysage (bureau)
 node tests\hud.cjs --tactile   # idem en mode tactile
 node tests\chevauchement.cjs   # cartes de l'Atelier de 1100 à 360 px
+node tests\roles-ennemis.cjs     # 4 Chargeurs, 4 Tireurs, et l'IA respecte le rôle
+node tests\equilibrage-tir.mjs   # ce que le tir coûte, en temps de survie
+node tests\pilote-cdp.cjs        # le pilote de navigateur est-il fiable ?
+node tests\capture-projectile.cjs # un projectile en vol, et sa taille en pixels
 ```
 
 `balance.model.mjs` contient les mêmes constantes que `game.js` — si tu changes une courbe dans le jeu, change-la aussi dans le modèle, sinon les tests mentent.
+
+### Les captures, et pourquoi elles étaient impossibles
+
+`_cdp.cjs` pilote le navigateur par le **protocole DevTools**. Ce n'était pas un détail technique : toutes les captures passaient par `--virtual-time-budget`, et ce drapeau est un piège. Le temps virtuel accélère les minuteries, mais `requestAnimationFrame` reste piloté par le compositeur, qui ne donne presque rien. Mesuré :
+
+| Réglage | Images rAF en 12 s de temps virtuel |
+| --- | --- |
+| `--virtual-time-budget` seul | 1 |
+| + `--run-all-compositor-stages-before-draw` | 2 |
+| sans budget (la capture part au chargement) | 0 |
+
+Le jeu ne peut pas jouer dans ces conditions : **aucune capture de jeu n'était possible**, et c'est pour ça que le rendu d'un projectile n'avait jamais été observé. Par le protocole DevTools, le navigateur tourne en temps réel — 38 images par seconde mesurées — et c'est le test qui décide quand lire la page et quand photographier.
+
+`capture-projectile.cjs` a un **contrôle négatif** : `--stub` remplace la sonde par une fonction qui ne voit jamais rien, et le test doit alors échouer. La version précédente ne pouvait pas échouer : elle photographiait un numéro d'image fixe sans savoir si un projectile existait, et produisait donc des images vides en ayant le droit de passer. Les deux diagnostics dont elle a besoin sont sur `window.__nexus`, qui est le point d'entrée de diagnostic du jeu :
+
+- `sonderProjectiles()` — ce que voit le joueur d'un projectile : distance, taille **en pixels**, position à l'écran. C'est ce chiffre qui a répondu à la plainte, et la réponse était 3 pixels.
+- `allerVague(n)` — sauter à une vague. Sans lui, la capture est impossible : un joueur immobile ne termine pas la vague 1, or la vague 1 ne contient que des Rôdeurs, et un Rôdeur ne tire pas.
 
 `hud.cjs` compare les blocs du HUD en **encre visible** (le texte) ou en boîte peinte (les boutons), jamais en boîte de conteneur : un élément de grille est étiré sur toute sa cellule, donc deux frères voisins se toucheraient toujours alors que leurs libellés sont bien séparés. Un contrôle négatif est documented dans le fichier : remettre les boutons d’action en bas doit faire échouer le test.
 

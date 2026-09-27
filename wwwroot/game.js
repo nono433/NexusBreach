@@ -4694,6 +4694,35 @@ function projectileGlowMaterial(color) {
   return projectileGlowMaterials.get(color);
 }
 
+// Taille apparente d'un projectile, en pixels.
+//
+// Mesure, pas intuition : la capture a montre qu'un projectile a 23 unites
+// occupait 3 pixels de cote, dans une arene de 44 unites de large. C'est
+// exactement la plainte "on ne voit pas les projectiles", et elle est
+// fondee. Un pave qu'on retrecit avec la distance devient un point, et le
+// joueur perd le seul signe qui lui dit qu'on le vise.
+//
+// La correction est la plus ancienne du genre : on met le projectile a
+// l'echelle de sa distance a la camera, pour qu'il occupe toujours la meme
+// taille a l'ecran. Il parait plus gros de loin, ce qui est un mensonge, mais
+// un mensonge utile : dans un jeu de tir, voir le tir qui vient vaut mieux que
+// voir sa vraie taille. Le plafond evite qu'un projectile a l'autre bout de
+// l'arene devienne une tache.
+const PROJECTILE_PX_CIBLE = 15;
+const PROJECTILE_PX_MAX = 30;
+
+function tailleApparente(projectile) {
+  const distance = camera.position.distanceTo(projectile.mesh.position) || 1;
+  // Metres par pixel a cette distance : la hauteur du champ de vision a
+  // cette distance, divisee par la hauteur de l'ecran en pixels.
+  const parPixel = (2 * Math.tan((camera.fov * Math.PI / 180) / 2) * distance)
+    / Math.max(1, window.innerHeight);
+  const pixels = Math.min(PROJECTILE_PX_MAX, PROJECTILE_PX_CIBLE);
+  // La geometrie de base fait 0.36 unite de cote : on ramene la taille voulue
+  // en unites, puis en facteur d'echelle.
+  return (pixels * parPixel) / 0.36;
+}
+
 const projectiles = [];
 
 const scratchProjectile = new THREE.Vector3();
@@ -4736,7 +4765,7 @@ function tirerProjectile(enemy, target) {
   const dz = cibleZ - scratchProjectile.z;
   const longueur = Math.hypot(dx, dy, dz) || 1;
 
-  projectiles.push({
+  const projectile = {
     mesh,
     glow,
     trail,
@@ -4745,8 +4774,15 @@ function tirerProjectile(enemy, target) {
     velocityZ: (dz / longueur) * template.vitesse,
     damage: enemy.rangedDamage,
     life: 4,
-    radius: 0.34
-  });
+    radius: 0.34,
+    // Le projectile part deja a sa taille apparente finale : le faire
+    //Grossir depuis zero en une image se verrait comme une apparition.
+    scale: 1
+  };
+  projectile.scale = tailleApparente(projectile);
+  mesh.scale.setScalar(projectile.scale);
+  glow.scale.setScalar(projectile.scale * 1.3);
+  projectiles.push(projectile);
   audio.enemyShot();
 }
 
@@ -4765,10 +4801,13 @@ function updateProjectiles(delta) {
     projectile.mesh.position.y += projectile.velocityY * delta;
     projectile.mesh.position.z += projectile.velocityZ * delta;
 
-    // Le projectile grossit en s'eloignant : il reste visible en profondeur.
-    const taille = 1 + projectile.life * 0.12;
-    projectile.mesh.scale.setScalar(taille);
-    projectile.glow.scale.setScalar(taille * 1.15);
+    // Taille apparente constante, atteinte progressivement : un changement
+    // brutal quand le projectile passe devant la camera se verrait comme un
+    // clignement.
+    const cible = tailleApparente(projectile);
+    projectile.scale += (cible - projectile.scale) * Math.min(1, delta * 9);
+    projectile.mesh.scale.setScalar(projectile.scale);
+    projectile.glow.scale.setScalar(projectile.scale * 1.3);
     projectile.glow.position.copy(projectile.mesh.position);
     // La trainee reste en retrait du projectile et s'etire dans l'axe du
     // deplacement, ce qui forme une ligne de fuite.
@@ -4777,7 +4816,8 @@ function updateProjectiles(delta) {
       (avantY + projectile.mesh.position.y) * 0.5,
       (avantZ + projectile.mesh.position.z) * 0.5
     );
-    projectile.trail.scale.set(0.7, 0.7, 0.7 + delta * 26);
+    projectile.trail.scale.set(projectile.scale * 0.75, projectile.scale * 0.75,
+      projectile.scale * (0.9 + delta * 26));
     projectile.trail.lookAt(projectile.mesh.position);
 
     let retire = projectile.life <= 0;
@@ -4802,7 +4842,7 @@ function updateProjectiles(delta) {
 
     if (retire) {
       // Le halo et la trainee sont des maillages comme le projectile : les
-      // retirer, sinon ils restent dans la scene et	coutent un appel de
+      // retirer, sinon ils restent dans la scene et coutent un appel de
       // dessin chacun pour rien.
       scene.remove(projectile.mesh);
       scene.remove(projectile.glow);
@@ -4828,6 +4868,34 @@ function clearProjectiles() {
     scene.remove(projectile.mesh);
     scene.remove(projectile.glow);
     scene.remove(projectile.trail);
+  });
+}
+
+// Sonde de diagnostic : ce que voit reellement le joueur d un projectile.
+//
+// "On ne les voit pas bien" est une plainte visuelle, mais elle se repond par
+// des nombres. Un pave de 0,36 unite parait ridicule sur un ecran quand il est
+// a l autre bout d une arene de 44 unites de large : la sonde convertit sa
+// taille en pixels a la position ou il se trouve, ce qui permet de trancher
+// sans deviner. Elle ne sert jamais en jeu, seulement pour la capture.
+function sonderProjectiles() {
+  const demiChamp = Math.tan((camera.fov * Math.PI / 180) / 2);
+  return projectiles.map((projectile) => {
+    const position = projectile.mesh.position;
+    const distance = camera.position.distanceTo(position);
+    const tailleUnites = 0.36 * projectile.mesh.scale.y;
+    // Taille apparente en pixels : le pave occupe cette fraction de la
+    // hauteur d ecran a cette distance. Le halo est 0,72 unite, donc deux fois
+    // plus large que ce que renvoie la sonde.
+    const pixels = tailleUnites / (2 * demiChamp * distance) * window.innerHeight;
+    const percu = position.clone().project(camera);
+    return {
+      distance: Math.round(distance * 10) / 10,
+      pixels: Math.round(pixels),
+      x: Math.round((percu.x * 0.5 + 0.5) * window.innerWidth),
+      y: Math.round((-percu.y * 0.5 + 0.5) * window.innerHeight),
+      devant: percu.z < 1
+    };
   });
 }
 
@@ -5933,7 +6001,23 @@ function init() {
 
   window.setTimeout(() => ui.loading.classList.add('done'), 480);
   renderer.setAnimationLoop(frame);
-  if (window.__nexus) window.__nexus.pret = true;
+  if (window.__nexus) {
+    window.__nexus.pret = true;
+    // Sonde projectiles, pour la capture qui doit prouver qu un tir est
+    // visible et mesurer combien de pixels il occupe.
+    window.__nexus.sonderProjectiles = sonderProjectiles;
+    // Saut de vague, pour cette meme capture. Sans lui, elle est impossible :
+    // un joueur immobile ne termine pas la vague 1, or la vague 1 ne contient
+    // que des Radeurs, et un Radeur ne tire pas. Il n'y a donc aucun
+    // projectile a photographier avant la vague 2.
+    window.__nexus.allerVague = (numero) => {
+      if (state === GAME_STATE.DEAD || state === GAME_STATE.MENU) return false;
+      wave = Math.max(1, Math.floor(numero) || 1);
+      clearProjectiles();
+      startWave();
+      return wave;
+    };
+  }
 }
 
 try {
