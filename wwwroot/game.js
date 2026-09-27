@@ -334,6 +334,21 @@ const ALPHA_STATS = { hp: 320, damage: 17, radius: 0.98, speed: 1.3 };
 // qui le distingue. portee est la distance a laquelle il se stabilise, cadence
 // l'intervalle entre deux tirs, annonce le temps d'armement avant le depart du
 // projectile, et degats la part de ses degats au contact que vaut un tir.
+// Tir a distance : seul un type sur deux le possede.
+//
+// Faire tirer tous les ennemis etait un choix qui sonnait bon sur le papier et
+// mauvais en jeu : il ne restait plus de role de pres, donc plus rien a
+// decider. Foncer sur un ennemi qui tire n'etait plus une riposte, c'etait
+// devenu un automatisme. La repartition ci-dessous redonne deux roles
+// lisibles :
+//
+//   - les Chargeurs (Rodeur, Brute) avancent et ne savent rien faire d'autre.
+//     Il faut les abattre avant qu'ils arrivent, ou les tenir a distance.
+//   - les Tireurs (Chasseur, Alpha) se stabilisent au loin et couvrent le
+//     groupe. Il faut les approcher pour les faire taire, ou chercher un decor.
+//
+// Un type qui declare portee sait tirer. Un type qui ne la declare pas charge
+// seulement : c'est la seule information a maintenir, tout le reste en decoule.
 const TIR_DEFAUTS = {
   portee: 12,
   cadence: 2.2,
@@ -346,7 +361,9 @@ const TIR_DEFAUTS = {
 };
 
 function avecTir(tir) {
-  return Object.assign({}, TIR_DEFAUTS, tir);
+  // Sans portee, le type ne tire pas : on ne lui invente pas de valeurs.
+  if (tir.portee === undefined) return Object.assign({ tire: false }, tir);
+  return Object.assign({ tire: true }, TIR_DEFAUTS, tir);
 }
 
 const ENEMY_TYPES = {
@@ -360,9 +377,9 @@ const ENEMY_TYPES = {
     bulk: 'light',
     color: 0x55f6c1,
     score: 100,
-    legs: 4,
-    // Robot de base : courte portee, tir faible et lent.
-    portee: 9, cadence: 2.5, vitesse: 15, annonce: 0.85, degats: 0.34
+    legs: 4
+    // Chargeur : le Roteur avance et frappe. Il ne tire pas, et c'est
+    // volontaire : c'est lui qui oblige a sortir de sa position.
   }),
   hunter: avecTir({
     name: 'Chasseur',
@@ -390,9 +407,8 @@ const ENEMY_TYPES = {
     bulk: 'heavy',
     color: 0xff5b42,
     score: 260,
-    legs: 6,
-    // Tir lent, lourd et puissant. Annonce longue, donc tres lisible.
-    portee: 13, cadence: 3, vitesse: 13, annonce: 1.05, degats: 0.6
+    legs: 6
+    // Chargeur lourd : un mur qu on affronte, pas qu on esquive.
   }),
   titan: avecTir({
     name: 'Alpha',
@@ -431,8 +447,8 @@ const FOUNDRY_ENEMY_TYPES = {
     legs: 4,
     bodyScale: [1.18, 0.78, 0.88],
     headScale: 0.95,
-    spikeCount: 5,
-    portee: 9, cadence: 2.5, vitesse: 15, annonce: 0.85, degats: 0.36
+    spikeCount: 5
+    // Chargeur.
   }),
   emberStalker: avecTir({
     name: 'Rôdeur de Braise',
@@ -466,8 +482,8 @@ const FOUNDRY_ENEMY_TYPES = {
     legs: 6,
     bodyScale: [1.3, 0.94, 1.02],
     headScale: 1.08,
-    spikeCount: 7,
-    portee: 14, cadence: 2.9, vitesse: 13, annonce: 1, degats: 0.62
+    spikeCount: 7
+    // Chargeur lourd.
   }),
   foundryAlpha: avecTir({
     name: 'Forge-Monarque',
@@ -3669,20 +3685,19 @@ function createEnemy(typeKey, level) {
     attackCooldown: 0.25 + Math.random() * 0.5,
     flashTime: 0,
     attackPulse: 0,
-    // Tir a distance. La portee est la distance a laquelle l'ennemi se
-    // stabilise : au-dela il avance, en deca il charge. La cadence suit la
-    // courbe de la vague, comme le corps a corps, pour que la menace reste
-    // proportionnelle au niveau plutot que d'exploser a la vague 5.
-    rangedRange: template.porteeMax,
-    telegraph: template.annonce,
+    // Tir a distance. Seul un type sur deux le possede : un Chargeur se
+    // contente d'avancer, et ses valeurs de tir restent inertes.
+    peutTirer: template.tire === true,
+    rangedRange: template.porteeMax || 0,
+    telegraph: template.annonce || 1,
     charge: 0,
     tirCooldown: 0.6 + Math.random() * 1.2,
-    rangedCooldown: Math.max(1.1, WAVE_CURVES.attackCooldown(wave) * template.cadence) * map.attackCooldownMultiplier,
+    rangedCooldown: Math.max(1.1, WAVE_CURVES.attackCooldown(wave) * (template.cadence || 2)) * map.attackCooldownMultiplier,
     // Un tir vaut une part de la frappe au contact, pas la totalite : sinon
     // l'ennemi ferait doublement mal des qu'il a de la portee. Le meme
     // multiplicateur de vague qu'au contact s'applique, pour que les deux
     // menaces restent proportionnelles au niveau.
-    rangedDamage: template.damage * WAVE_CURVES.enemyDamage(level) * map.enemyDamageMultiplier * template.degats,
+    rangedDamage: template.damage * WAVE_CURVES.enemyDamage(level) * map.enemyDamageMultiplier * (template.degats || 0),
     slowTimer: 0,
     slowMultiplier: 1,
     burnTimer: 0,
@@ -4639,23 +4654,44 @@ const scratchAway = new THREE.Vector3();
 
 // Geometrie partagee : tous les projectiles sont le meme pave, seules la
 // couleur et la taille changent.
-const projectileGeometry = new THREE.BoxGeometry(0.24, 0.24, 0.24);
+const projectileGeometry = new THREE.BoxGeometry(0.36, 0.36, 0.36);
+
+// Enveloppe lumineuse, plus grande que le projectile et rendue en additif :
+// c'est elle qu'on voit de loin. Un pave de 24 pixels ne se repere pas a
+// l'autre bout de l'arene, dont la scene fait 44 unites de large.
+const projectileGlowGeometry = new THREE.BoxGeometry(0.72, 0.72, 0.72);
 
 // Les materiaux sont caches par couleur : une foule d'ennemis de types
 // differents ne doit pas allouer un materiau par projectile.
 const projectileMaterials = new Map();
+const projectileGlowMaterials = new Map();
 
 function projectileMaterial(color) {
   if (!projectileMaterials.has(color)) {
     projectileMaterials.set(color, new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.95,
+      opacity: 1,
       blending: THREE.AdditiveBlending,
       depthWrite: false
     }));
   }
   return projectileMaterials.get(color);
+}
+
+// L'enveloppe est nettement plus faible que le coeur : elle donne le halo
+// sans noyer le projectile lui-meme, qu'on doit pouvoir suivre du regard.
+function projectileGlowMaterial(color) {
+  if (!projectileGlowMaterials.has(color)) {
+    projectileGlowMaterials.set(color, new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.34,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    }));
+  }
+  return projectileGlowMaterials.get(color);
 }
 
 const projectiles = [];
@@ -4674,9 +4710,21 @@ function tirerProjectile(enemy, target) {
     enemy.root.position.z
   );
 
-  const mesh = new THREE.Mesh(projectileGeometry, projectileMaterial(template.accentColor || template.color));
+  const teinte = template.accentColor || template.color;
+  const mesh = new THREE.Mesh(projectileGeometry, projectileMaterial(teinte));
   mesh.position.copy(scratchProjectile);
   scene.add(mesh);
+
+  // Halo et trainee : sans eux, le projectile se perdait dans le decor. La
+  // trainee est un pave allonge qui suit le projectile, ce qui donne sa
+  // direction meme quand il est loin et petit a l'ecran.
+  const glow = new THREE.Mesh(projectileGlowGeometry, projectileGlowMaterial(teinte));
+  glow.position.copy(scratchProjectile);
+  scene.add(glow);
+
+  const trail = new THREE.Mesh(projectileGeometry, projectileGlowMaterial(teinte));
+  trail.position.copy(scratchProjectile);
+  scene.add(trail);
 
   // Direction visee vers la poitrine du joueur, pas vers ses pieds : le
   // projectile doit passer a hauteur de torse.
@@ -4690,6 +4738,8 @@ function tirerProjectile(enemy, target) {
 
   projectiles.push({
     mesh,
+    glow,
+    trail,
     velocityX: (dx / longueur) * template.vitesse,
     velocityY: (dy / longueur) * template.vitesse,
     velocityZ: (dz / longueur) * template.vitesse,
@@ -4700,12 +4750,17 @@ function tirerProjectile(enemy, target) {
   audio.enemyShot();
 }
 
-// Avance les projectiles et resout les impacts. Coherence de coquet : le
-// projectile disparait sur un obstacle, donc le decor protege reellement.
+// Avance les projectiles et resout les impacts. Le decor protege : le
+// projectile disparait sur un obstacle.
 function updateProjectiles(delta) {
   for (let i = projectiles.length - 1; i >= 0; i -= 1) {
     const projectile = projectiles[i];
     projectile.life -= delta;
+    // Position precedente conservee pour la trainee : c'est elle qui rend la
+    // direction lisible quand le projectile est loin.
+    const avantX = projectile.mesh.position.x;
+    const avantY = projectile.mesh.position.y;
+    const avantZ = projectile.mesh.position.z;
     projectile.mesh.position.x += projectile.velocityX * delta;
     projectile.mesh.position.y += projectile.velocityY * delta;
     projectile.mesh.position.z += projectile.velocityZ * delta;
@@ -4713,6 +4768,17 @@ function updateProjectiles(delta) {
     // Le projectile grossit en s'eloignant : il reste visible en profondeur.
     const taille = 1 + projectile.life * 0.12;
     projectile.mesh.scale.setScalar(taille);
+    projectile.glow.scale.setScalar(taille * 1.15);
+    projectile.glow.position.copy(projectile.mesh.position);
+    // La trainee reste en retrait du projectile et s'etire dans l'axe du
+    // deplacement, ce qui forme une ligne de fuite.
+    projectile.trail.position.set(
+      (avantX + projectile.mesh.position.x) * 0.5,
+      (avantY + projectile.mesh.position.y) * 0.5,
+      (avantZ + projectile.mesh.position.z) * 0.5
+    );
+    projectile.trail.scale.set(0.7, 0.7, 0.7 + delta * 26);
+    projectile.trail.lookAt(projectile.mesh.position);
 
     let retire = projectile.life <= 0;
 
@@ -4735,7 +4801,12 @@ function updateProjectiles(delta) {
     }
 
     if (retire) {
+      // Le halo et la trainee sont des maillages comme le projectile : les
+      // retirer, sinon ils restent dans la scene et	coutent un appel de
+      // dessin chacun pour rien.
       scene.remove(projectile.mesh);
+      scene.remove(projectile.glow);
+      scene.remove(projectile.trail);
       projectiles.splice(i, 1);
     }
   }
@@ -4755,6 +4826,8 @@ function burstProjectile(projectile) {
 function clearProjectiles() {
   projectiles.splice(0).forEach((projectile) => {
     scene.remove(projectile.mesh);
+    scene.remove(projectile.glow);
+    scene.remove(projectile.trail);
   });
 }
 
@@ -4790,15 +4863,16 @@ function updateEnemies(delta) {
     if (distance > 0.001) scratchToPlayer.normalize();
     const attackDistance = enemy.radius * 1.45 + 0.5;
 
-    // Tir a distance. Trois regimes :
+    // Tir a distance. Trois regimes, mais seulement pour un type qui sait
+    // tirer :
     //   - trop pres : il charge et frappe au contact, il ne tire plus ;
     //   - a portee  : il se stabilise, arme son tir, puis tire ;
     //   - trop loin : il avance.
-    // Le regime du milieu est ce qui donne au joueur une reponse aux tirs :
-    // on fonce sur l'ennemi, et il passe en corps a corps ou il ne peut plus
-    // tirer. Sans ce regime, un ennemi a distance serait un probleme sans
-    // issue.
-    const aPortee = distance > attackDistance && distance <= enemy.rangedRange;
+    // Un Chargeur ignore le regime du milieu : il avance jusqu'au contact,
+    // point final. C'est ce qui rend les roles lisibles.
+    const aPortee = enemy.peutTirer
+      && distance > attackDistance
+      && distance <= enemy.rangedRange;
     const advanceSpeed = !aPortee && distance > attackDistance ? enemy.speed * enemy.slowMultiplier : 0;
 
     if (advanceSpeed > 0) {

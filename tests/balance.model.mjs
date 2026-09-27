@@ -25,10 +25,10 @@ export const ALPHA_CHANCE = 0.18;
 // et ses degats (part de ses degats au contact que vaut un projectile). Ces
 // valeurs sont celles des huit gabarits dans game.js.
 export const TIR = {
-  trash: { cadence: 2.5, degats: 0.34 },
-  swift: { cadence: 1.5, degats: 0.3 },
-  tank: { cadence: 3, degats: 0.6 },
-  elite: { cadence: 2.3, degats: 0.55 }
+  trash: { tire: false },
+  swift: { tire: true, cadence: 1.5, degats: 0.3 },
+  tank: { tire: false },
+  elite: { tire: true, cadence: 2.3, degats: 0.55 }
 };
 
 // Part de chaque type dans la population, avec ses degats au contact. La
@@ -43,15 +43,16 @@ const TIR_PAR_TYPE = [
 
 // Degats encaisses par seconde dus aux tirs.
 //
-// L'hypothese est la plus defavorable au joueur, et c'est volontaire : on
-// suppose que TOUS les ennemis engages sont a portee de tir. En realite ils se
-// stabilisent a leur portee puis chargent des qu'on approche, donc une part du
-// temps ils sont en melee. Surestimer evite de livrer un jeu trop dur.
+// L'hypothese reste defavorable au joueur : on suppose que tous les Tireurs
+// engages sont a portee. Les Chargeurs, qui sont la majorite, ne savent pas
+// tirer et sont donc absents du calcul.
 export function tirParSeconde(wave, dmgMult, atkMult, effectif) {
   let total = 0;
   for (const type of TIR_PAR_TYPE) {
-    const cadence = Math.max(1.1, CURVES.attackCooldown(wave) * TIR[type.cle].cadence) * atkMult;
-    total += (effectif * type.poids) * (type.degats * TIR[type.cle].degats * dmgMult) / cadence;
+    const tir = TIR[type.cle];
+    if (!tir.tire) continue;
+    const cadence = Math.max(1.1, CURVES.attackCooldown(wave) * tir.cadence) * atkMult;
+    total += (effectif * type.poids) * (type.degats * tir.degats * dmgMult) / cadence;
   }
   return total;
 }
