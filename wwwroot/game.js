@@ -323,8 +323,34 @@ const ALPHA_PREMIERE_VAGUE = 8;
 // CLASS_DEFAULT_WEAPON avant que le test de sauvegarde ancienne ne le revele.
 const ALPHA_STATS = { hp: 320, damage: 17, radius: 0.98, speed: 1.3 };
 
+// Tir a distance, commun a tous les types.
+//
+// Jusqu ici les ennemis n'infligeaient leurs degats qu'au contact. Chacun
+// tire desormais en plus, ce qui donne au joueur une reponse : foncer sur un
+// ennemi le fait passer en melee, ou il ne peut plus tirer. Sans cela, un
+// ennemi a distance serait un probleme sans reponse.
+//
+// Les valeurs par defaut s'appliquent a tous ; chaque type ne declare que ce
+// qui le distingue. portee est la distance a laquelle il se stabilise, cadence
+// l'intervalle entre deux tirs, annonce le temps d'armement avant le depart du
+// projectile, et degats la part de ses degats au contact que vaut un tir.
+const TIR_DEFAUTS = {
+  portee: 12,
+  cadence: 2.2,
+  vitesse: 20,
+  annonce: 0.8,
+  degats: 0.42,
+  // Au-dela de cette distance l'ennemi avance au lieu de tirer : sans limite
+  // haute, un robot resterait immobile a l'autre bout de l'arene.
+  porteeMax: 26
+};
+
+function avecTir(tir) {
+  return Object.assign({}, TIR_DEFAUTS, tir);
+}
+
 const ENEMY_TYPES = {
-  crawler: {
+  crawler: avecTir({
     name: 'Rôdeur',
     hp: 48,
     speed: 2.35,
@@ -334,9 +360,11 @@ const ENEMY_TYPES = {
     bulk: 'light',
     color: 0x55f6c1,
     score: 100,
-    legs: 4
-  },
-  hunter: {
+    legs: 4,
+    // Robot de base : courte portee, tir faible et lent.
+    portee: 9, cadence: 2.5, vitesse: 15, annonce: 0.85, degats: 0.34
+  }),
+  hunter: avecTir({
     name: 'Chasseur',
     hp: 36,
     speed: 3.65,
@@ -346,9 +374,13 @@ const ENEMY_TYPES = {
     bulk: 'light',
     color: 0xffcf4a,
     score: 130,
-    legs: 4
-  },
-  brute: {
+    legs: 4,
+    // Le tireur : portee la plus longue, cadence la plus rapide, mais
+    // projectile faible. Il oblige a rester a distance, la ou les autres
+    // AVANCENT, ce qui change la lecture du combat.
+    portee: 19, cadence: 1.5, vitesse: 25, annonce: 0.6, degats: 0.3
+  }),
+  brute: avecTir({
     name: 'Brute',
     hp: 145,
     speed: 1.58,
@@ -358,9 +390,11 @@ const ENEMY_TYPES = {
     bulk: 'heavy',
     color: 0xff5b42,
     score: 260,
-    legs: 6
-  },
-  titan: {
+    legs: 6,
+    // Tir lent, lourd et puissant. Annonce longue, donc tres lisible.
+    portee: 13, cadence: 3, vitesse: 13, annonce: 1.05, degats: 0.6
+  }),
+  titan: avecTir({
     name: 'Alpha',
     hp: ALPHA_STATS.hp,
     speed: ALPHA_STATS.speed,
@@ -376,12 +410,14 @@ const ENEMY_TYPES = {
     score: 1200,
     legs: 6,
     bulk: 'heavy',
-    elite: true
-  }
+    elite: true,
+    // Tir lourd a moyenne distance, annonce appreciable.
+    portee: 16, cadence: 2.3, vitesse: 19, annonce: 0.9, degats: 0.55
+  })
 };
 
 const FOUNDRY_ENEMY_TYPES = {
-  slagCrawler: {
+  slagCrawler: avecTir({
     name: 'Crawleur de Scorie',
     hp: 64,
     speed: 2.5,
@@ -395,9 +431,10 @@ const FOUNDRY_ENEMY_TYPES = {
     legs: 4,
     bodyScale: [1.18, 0.78, 0.88],
     headScale: 0.95,
-    spikeCount: 5
-  },
-  emberStalker: {
+    spikeCount: 5,
+    portee: 9, cadence: 2.5, vitesse: 15, annonce: 0.85, degats: 0.36
+  }),
+  emberStalker: avecTir({
     name: 'Rôdeur de Braise',
     hp: 48,
     speed: 4.05,
@@ -411,9 +448,11 @@ const FOUNDRY_ENEMY_TYPES = {
     legs: 4,
     bodyScale: [0.88, 1.08, 0.72],
     headScale: 0.82,
-    spikeCount: 3
-  },
-  ironBrute: {
+    spikeCount: 3,
+    // Le plus rapide en tir et en deplacement : il traverse l'arene.
+    portee: 18, cadence: 1.4, vitesse: 27, annonce: 0.55, degats: 0.3
+  }),
+  ironBrute: avecTir({
     name: 'Colosse de Laitier',
     hp: 230,
     speed: 1.66,
@@ -427,9 +466,10 @@ const FOUNDRY_ENEMY_TYPES = {
     legs: 6,
     bodyScale: [1.3, 0.94, 1.02],
     headScale: 1.08,
-    spikeCount: 7
-  },
-  foundryAlpha: {
+    spikeCount: 7,
+    portee: 14, cadence: 2.9, vitesse: 13, annonce: 1, degats: 0.62
+  }),
+  foundryAlpha: avecTir({
     name: 'Forge-Monarque',
     hp: ALPHA_STATS.hp * 1.3,
     speed: ALPHA_STATS.speed * 0.95,
@@ -445,8 +485,9 @@ const FOUNDRY_ENEMY_TYPES = {
     bodyScale: [1.2, 1.08, 1],
     headScale: 1.08,
     spikeCount: 9,
-    elite: true
-  }
+    elite: true,
+    portee: 17, cadence: 2.2, vitesse: 20, annonce: 0.85, degats: 0.6
+  })
 };
 
 const ENEMY_TYPE_SETS = {
@@ -1471,6 +1512,14 @@ class SoundSystem {
     this.noise(0.12, 0.08, 650);
   }
 
+  // Tir ennemi : descendant et Metal, pour etre distingue du tir du joueur
+  // sans avoir besoin de regarder ou il vient. Il doit se confondre avec le
+  // sien, sinon le joueur perd la ou est la menace.
+  enemyShot() {
+    this.tone(520, 0.13, 0.1, 'sawtooth', -280);
+    this.tone(180, 0.09, 0.05, 'square', -120);
+  }
+
   kill() {
     this.tone(210, 0.18, 0.09, 'triangle', 260);
   }
@@ -2440,6 +2489,10 @@ function clearDynamicObjects() {
     scene.remove(enemy.root);
     disposeEnemy(enemy);
   });
+  // Les projectiles sont des objets dynamiques comme les autres : laisses en
+  // place, ils continueraient de voler et de blesser dans une partie suivante,
+  // et leurs maillages resteraient dans le GPU.
+  clearProjectiles();
   enemyTargets.length = 0;
   syncRaycastTargets();
   navTimer = 0;
@@ -3616,9 +3669,20 @@ function createEnemy(typeKey, level) {
     attackCooldown: 0.25 + Math.random() * 0.5,
     flashTime: 0,
     attackPulse: 0,
-    // Valeur d'armement des bras, 0 au repos et 1 leves. Le tir a distance
-    // la pilotera, et l'attaque au contact s'en sert deja.
-    armement: 0,
+    // Tir a distance. La portee est la distance a laquelle l'ennemi se
+    // stabilise : au-dela il avance, en deca il charge. La cadence suit la
+    // courbe de la vague, comme le corps a corps, pour que la menace reste
+    // proportionnelle au niveau plutot que d'exploser a la vague 5.
+    rangedRange: template.porteeMax,
+    telegraph: template.annonce,
+    charge: 0,
+    tirCooldown: 0.6 + Math.random() * 1.2,
+    rangedCooldown: Math.max(1.1, WAVE_CURVES.attackCooldown(wave) * template.cadence) * map.attackCooldownMultiplier,
+    // Un tir vaut une part de la frappe au contact, pas la totalite : sinon
+    // l'ennemi ferait doublement mal des qu'il a de la portee. Le meme
+    // multiplicateur de vague qu'au contact s'applique, pour que les deux
+    // menaces restent proportionnelles au niveau.
+    rangedDamage: template.damage * WAVE_CURVES.enemyDamage(level) * map.enemyDamageMultiplier * template.degats,
     slowTimer: 0,
     slowMultiplier: 1,
     burnTimer: 0,
@@ -4545,6 +4609,155 @@ const scratchToPlayer = new THREE.Vector3();
 const scratchMovement = new THREE.Vector3();
 const scratchAway = new THREE.Vector3();
 
+// ===========================================================================
+// Projectiles ennemis
+//
+// Jusqu'ici les ennemis n'infligeaient leurs degats qu'au contact. Chacun
+// tire desormais en plus, ce qui donne au joueur une reponse : foncer sur un
+// ennemi le fait passer en melee, ou il ne peut plus tirer.
+//
+// Trois choix dictent le code :
+//
+// 1. Le projectile est visible et lent. Un tir invisible est injuste, surtout
+//    au doigt ou l'on n'a pas le temps de reflechir. La vitesse est donc bien
+//    inferieure a celle d'une balle de fusil, et le projectile grossit
+//    legrement en s'eloignant, ce qui aide a l'evaluer en profondeur.
+//
+// 2. Le tir traverse le decor. Le projectile teste les obstacles a chaque
+//    image : se placer derriere un bloc est donc une vraie reponse, et pas un
+//    detail esthetique. Sans cela, les obstacles de l'arene ne serviraient a
+//    rien contre les tirs.
+//
+// 3. L'armement est annonce. Le robot leve ses bras et sa visee s'eclaircit
+//    pendant tout le temps d'annonce (enemy.charge), et le projectile ne part
+//    qu'a la fin. C'est ce qui rend le tir esquissable : on voit venir, on se
+//    decale.
+//
+// Les degats reprennent la meme mise a l'echelle que le corps a corps, sinon
+// un ennemi serait deux fois plus dangereux du seul fait d'avoir tire.
+// ===========================================================================
+
+// Geometrie partagee : tous les projectiles sont le meme pave, seules la
+// couleur et la taille changent.
+const projectileGeometry = new THREE.BoxGeometry(0.24, 0.24, 0.24);
+
+// Les materiaux sont caches par couleur : une foule d'ennemis de types
+// differents ne doit pas allouer un materiau par projectile.
+const projectileMaterials = new Map();
+
+function projectileMaterial(color) {
+  if (!projectileMaterials.has(color)) {
+    projectileMaterials.set(color, new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    }));
+  }
+  return projectileMaterials.get(color);
+}
+
+const projectiles = [];
+
+const scratchProjectile = new THREE.Vector3();
+
+// Fait partir un projectile depuis la visee de l'ennemi vers le joueur.
+// La visee est le point le plus haut du robot : le tir vient des yeux, ce qui
+// rend la direction lisible, et non du centre du corps ou il serait masque.
+function tirerProjectile(enemy, target) {
+  const template = enemy.template;
+  const hauteur = 1.55 * enemy.scale;
+  scratchProjectile.set(
+    enemy.root.position.x,
+    enemy.root.position.y + hauteur,
+    enemy.root.position.z
+  );
+
+  const mesh = new THREE.Mesh(projectileGeometry, projectileMaterial(template.accentColor || template.color));
+  mesh.position.copy(scratchProjectile);
+  scene.add(mesh);
+
+  // Direction visee vers la poitrine du joueur, pas vers ses pieds : le
+  // projectile doit passer a hauteur de torse.
+  const cibleX = target.x;
+  const cibleY = target.y + 1.1;
+  const cibleZ = target.z;
+  const dx = cibleX - scratchProjectile.x;
+  const dy = cibleY - scratchProjectile.y;
+  const dz = cibleZ - scratchProjectile.z;
+  const longueur = Math.hypot(dx, dy, dz) || 1;
+
+  projectiles.push({
+    mesh,
+    velocityX: (dx / longueur) * template.vitesse,
+    velocityY: (dy / longueur) * template.vitesse,
+    velocityZ: (dz / longueur) * template.vitesse,
+    damage: enemy.rangedDamage,
+    life: 4,
+    radius: 0.34
+  });
+  audio.enemyShot();
+}
+
+// Avance les projectiles et resout les impacts. Coherence de coquet : le
+// projectile disparait sur un obstacle, donc le decor protege reellement.
+function updateProjectiles(delta) {
+  for (let i = projectiles.length - 1; i >= 0; i -= 1) {
+    const projectile = projectiles[i];
+    projectile.life -= delta;
+    projectile.mesh.position.x += projectile.velocityX * delta;
+    projectile.mesh.position.y += projectile.velocityY * delta;
+    projectile.mesh.position.z += projectile.velocityZ * delta;
+
+    // Le projectile grossit en s'eloignant : il reste visible en profondeur.
+    const taille = 1 + projectile.life * 0.12;
+    projectile.mesh.scale.setScalar(taille);
+
+    let retire = projectile.life <= 0;
+
+    if (!retire && isBlocked(projectile.mesh.position.x, projectile.mesh.position.z, 0.12)) {
+      // Impact sur un obstacle : un petit flash, pas de degats.
+      burstProjectile(projectile);
+      retire = true;
+    }
+
+    if (!retire) {
+      const dx = projectile.mesh.position.x - player.position.x;
+      const dy = projectile.mesh.position.y - (player.position.y + 1.1);
+      const dz = projectile.mesh.position.z - player.position.z;
+      const portee = 0.55 + projectile.radius;
+      if (dx * dx + dy * dy + dz * dz < portee * portee) {
+        damagePlayer(projectile.damage);
+        burstProjectile(projectile);
+        retire = true;
+      }
+    }
+
+    if (retire) {
+      scene.remove(projectile.mesh);
+      projectiles.splice(i, 1);
+    }
+  }
+}
+
+// Impact visuel. On reutilise le tableau ripples existant plutot que d'en
+// creer un : un projectile qui explose doit etre un effet bref parmi les
+// autres, pas un systeme a part.
+function burstProjectile(projectile) {
+  const mesh = new THREE.Mesh(projectileGeometry, projectile.material || projectile.mesh.material);
+  mesh.position.copy(projectile.mesh.position);
+  mesh.scale.setScalar(0.9);
+  scene.add(mesh);
+  ripples.push({ mesh, life: 0.16, maxLife: 0.16, startScale: 0.9, endScale: 2.4 });
+}
+
+function clearProjectiles() {
+  projectiles.splice(0).forEach((projectile) => {
+    scene.remove(projectile.mesh);
+  });
+}
+
 function updateEnemies(delta) {
   navTimer -= delta;
   if (navTimer <= 0) {
@@ -4576,12 +4789,31 @@ function updateEnemies(delta) {
     const distance = scratchToPlayer.length();
     if (distance > 0.001) scratchToPlayer.normalize();
     const attackDistance = enemy.radius * 1.45 + 0.5;
-    const attackSpeed = distance > attackDistance ? enemy.speed * enemy.slowMultiplier : 0;
-    if (attackSpeed > 0) {
+
+    // Tir a distance. Trois regimes :
+    //   - trop pres : il charge et frappe au contact, il ne tire plus ;
+    //   - a portee  : il se stabilise, arme son tir, puis tire ;
+    //   - trop loin : il avance.
+    // Le regime du milieu est ce qui donne au joueur une reponse aux tirs :
+    // on fonce sur l'ennemi, et il passe en corps a corps ou il ne peut plus
+    // tirer. Sans ce regime, un ennemi a distance serait un probleme sans
+    // issue.
+    const aPortee = distance > attackDistance && distance <= enemy.rangedRange;
+    const advanceSpeed = !aPortee && distance > attackDistance ? enemy.speed * enemy.slowMultiplier : 0;
+
+    if (advanceSpeed > 0) {
       const flowDirection = getFlowDirection(enemy.root.position);
       scratchMovement.copy(flowDirection || scratchToPlayer);
       scratchMovement.lerp(scratchToPlayer, 0.12).normalize();
-      scratchMovement.multiplyScalar(attackSpeed * delta);
+      scratchMovement.multiplyScalar(advanceSpeed * delta);
+      moveEntity(enemy.root.position, scratchMovement.x, scratchMovement.z, enemy.radius);
+    } else if (aPortee) {
+      // Il tient sa distance et derive legerement sur le cote, pour ne pas
+      // former un mur statique devant le joueur. La derive est lente et suit
+      // le germe de l'ennemi : deux robots voisins ne partent donc pas dans
+      // la meme direction.
+      const derive = Math.sin(elapsed * 0.9 + enemy.seed) * enemy.speed * 0.28 * delta;
+      scratchMovement.set(-scratchToPlayer.z, 0, scratchToPlayer.x).multiplyScalar(derive);
       moveEntity(enemy.root.position, scratchMovement.x, scratchMovement.z, enemy.radius);
     }
 
@@ -4607,6 +4839,22 @@ function updateEnemies(delta) {
 
     enemy.attackCooldown -= delta;
     enemy.attackPulse = Math.max(0, enemy.attackPulse - delta * 2.2);
+
+    // Armement du tir. La charge monte tant que l'ennemi est a portee et
+    // redescend sinon : c'est ce qui rend le tir lisible, on voit le robot se
+    // preparer avant que le projectile parte.
+    if (aPortee) {
+      enemy.charge += delta / enemy.telegraph;
+      if (enemy.charge >= 1 && enemy.tirCooldown <= 0) {
+        enemy.charge = 0;
+        enemy.tirCooldown = enemy.rangedCooldown;
+        tirerProjectile(enemy, player.position);
+      }
+    } else if (enemy.charge > 0) {
+      enemy.charge = Math.max(0, enemy.charge - delta * 2.4);
+    }
+    enemy.tirCooldown = Math.max(0, enemy.tirCooldown - delta);
+
     if (distance < attackDistance && enemy.attackCooldown <= 0) {
       // Un elite tape 25 % plus vite qu'un ennemi ordinaire, et non plus vite
       // que la cadence de la vague. La valeur precedente (1.15 s) etait plus
@@ -4634,9 +4882,10 @@ function updateEnemies(delta) {
       pivot.rotation.x = Math.sin(elapsed * (fastLegs ? 10 : 7) + phase) * (fastLegs ? 0.55 : 0.35);
       pivot.rotation.z = side * (0.06 + Math.cos(elapsed * 6 + phase) * 0.04);
     });
-    // Bras : ils se montent des que l'ennemi arme une attaque. attackPulse
-    // retombe vite de lui-meme, donc le geste est court et se lit.
-    enemy.armement = Math.max(enemy.armement * 0.86, enemy.attackPulse);
+    // Bras : ils se montent pendant l'armement d'un tir, et claquent aussi a
+    // l'attaque au contact. La charge pilote donc le tir a distance et
+    // attackPulse le corps a corps : un seul systeme pour deux gestes.
+    enemy.armement = Math.max(enemy.charge, enemy.attackPulse);
     animerBras(enemy.armPivots, enemy.armement);
     // La visee s'eclaircit a l'armement : c'est le seul signe avant-coureur
     // dont le joueur dispose, donc il doit rester lisible de loin.
@@ -5552,6 +5801,10 @@ function frame(time) {
     if (keys.has('Mouse0') || isTouchFiring()) fireWeapon();
     updatePlayer(delta);
     updateEnemies(delta);
+    // Apres updateEnemies : les projectiles que les ennemis viennent de lancer
+    // avancent des la meme image, sinon un tir anterieur d'une image
+    // paraitrait ne pas partir.
+    updateProjectiles(delta);
     updateWave(delta);
     hudTimer -= delta;
     if (hudTimer <= 0) {

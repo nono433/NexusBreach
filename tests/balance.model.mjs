@@ -21,6 +21,41 @@ export const ELITE_CADENCE = (wave) => Math.max(1.05, CURVES.attackCooldown(wave
 export const ALPHA_PREMIERE_VAGUE = 8;
 export const ALPHA_CHANCE = 0.18;
 
+// Tir a distance. Chaque type declare sa cadence (intervalle entre deux tirs)
+// et ses degats (part de ses degats au contact que vaut un projectile). Ces
+// valeurs sont celles des huit gabarits dans game.js.
+export const TIR = {
+  trash: { cadence: 2.5, degats: 0.34 },
+  swift: { cadence: 1.5, degats: 0.3 },
+  tank: { cadence: 3, degats: 0.6 },
+  elite: { cadence: 2.3, degats: 0.55 }
+};
+
+// Part de chaque type dans la population, avec ses degats au contact. La
+// meme repartition que MIX, mais explicite ici pour que la lecture du calcul
+// des tirs n'exige pas d'aller la chercher ailleurs.
+const TIR_PAR_TYPE = [
+  { cle: 'trash', poids: 0.55, degats: 9 },
+  { cle: 'swift', poids: 0.3, degats: 7 },
+  { cle: 'tank', poids: 0.14, degats: 19 },
+  { cle: 'elite', poids: 0.01, degats: 29 }
+];
+
+// Degats encaisses par seconde dus aux tirs.
+//
+// L'hypothese est la plus defavorable au joueur, et c'est volontaire : on
+// suppose que TOUS les ennemis engages sont a portee de tir. En realite ils se
+// stabilisent a leur portee puis chargent des qu'on approche, donc une part du
+// temps ils sont en melee. Surestimer evite de livrer un jeu trop dur.
+export function tirParSeconde(wave, dmgMult, atkMult, effectif) {
+  let total = 0;
+  for (const type of TIR_PAR_TYPE) {
+    const cadence = Math.max(1.1, CURVES.attackCooldown(wave) * TIR[type.cle].cadence) * atkMult;
+    total += (effectif * type.poids) * (type.degats * TIR[type.cle].degats * dmgMult) / cadence;
+  }
+  return total;
+}
+
 export const CURVES = {
   hpMult: (w) => Math.min(8.5, 1 + 0.17 * (w - 1)),
   dmgMult: (w) => Math.min(1.7, 1 + 0.026 * (w - 1)),
@@ -169,7 +204,12 @@ export function simulate({ mapId = 'nexus', weaponId = 'pulse', archetype = 'sus
 
     const engaged = Math.min(concurrent, 5 + Math.floor(concurrent * 0.55));
     const incomingPerSecond = (engaged * avgDamage * dmgMult) / cooldown;
-    const timeToDie = power.effectiveHp / incomingPerSecond;
+    // Le tir s'ajoute au corps a corps. C'est un changement de menace, pas un
+    // simple ajustement : avant, rester a distance ete sur ; desormais cela
+    // expose. On garde aussi le temps sans tir, pour voir ce que le tir change.
+    const tirPerSecond = tirParSeconde(wave, dmgMult, map.atkMult, engaged);
+    const timeToDie = power.effectiveHp / (incomingPerSecond + tirPerSecond);
+    const timeToDieSansTir = power.effectiveHp / incomingPerSecond;
 
     rows.push({
       wave,
@@ -178,7 +218,9 @@ export function simulate({ mapId = 'nexus', weaponId = 'pulse', archetype = 'sus
       invest: Math.round(investment * 100) / 100,
       dps: Math.round(power.dps * power.targets),
       effHp: Math.round(power.effectiveHp),
+      tir: Math.round(tirPerSecond * 10) / 10,
       ttd: Math.round(timeToDie * 100) / 100,
+      ttdSansTir: Math.round(timeToDieSansTir * 100) / 100,
       sustained: Math.round(sustained * 100) / 100,
       verdict: sustained < 0.8 ? 'IMPOSSIBLE'
         : sustained < 1.15 || timeToDie < 1.2 ? 'MORT'
