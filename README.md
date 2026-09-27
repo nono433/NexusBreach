@@ -67,9 +67,11 @@ Le mode tactile se détecte tout seul (pointeur grossier) : rien à cocher, et u
 | Geste | Effet |
 | --- | --- |
 | **Glisser à gauche** (bas de l’écran) | Joystick flottant : il apparaît où tu poses le pouce. Il ne s’active que dans le coin gauche **et** le bas de l’écran, pour ne pas masquer le HUD. |
-| **Glisser à droite** | Viser, **et tirer en même temps**. C’est le standard des FPS mobiles : sans tir automatique, il faudrait un troisième doigt. |
+| **Glisser à droite** | Viser, et rien d'autre. Le tir ne part que du bouton TIR : viser et tirer étaient fondus dans le même geste, donc toute correction de visée partait en rafale. |
 | **RECH / TIR / CAP** | Recharger, tir sans déplacer la vue, capacité. |
 | **❚❚** (haut droite) | Pause. Indispensable : sur mobile il n’y a pas de pointer lock, donc aucune touche `Échap`. |
+
+Le tir automatique pendant le glissement a été **retiré**. Viser et tirer étaient fondus dans le même geste : le joueur ne pouvait plus corriger sa visée sans déclencher une rafale, et les munitions s'écoulaient pendant qu'il cherchait où poser son doigt. Le bouton TIR est désormais le seul geste qui tire.
 
 Quelques différences avec le PC, assumées :
 
@@ -162,7 +164,7 @@ node tests\garde-demarrage.cjs     # un echec au demarrage est signale
 node tests\encodage.cjs            # double encodage UTF-8
 node tests\smoke.cjs           # jeu réel dans un navigateur headless (Ranger)
 node tests\assassin.cjs        # classe Assassin : atelier, frappe, dash
-node tests\tactile.cjs         # 13 étapes : joystick, visée, tir auto, pause, atelier
+node tests\tactile.cjs         # 14 étapes : joystick, visée, séparation du tir, pause, atelier
 node tests\hud.cjs             # collisions du HUD en paysage (bureau)
 node tests\hud.cjs --tactile   # idem en mode tactile
 node tests\chevauchement.cjs   # cartes de l'Atelier de 1100 à 360 px
@@ -174,6 +176,10 @@ node tests\pilote-cdp.cjs        # le pilote de navigateur est-il fiable ?
 node tests\capture-projectile.cjs # un projectile en vol, et sa taille en pixels
 node tests\capture-robots.cjs    # l'aperçu des robots est bien rendu
 ```
+
+`tactile.cjs` sortait **toujours en 0**, y compris après une étape en échec : il rapportait, il ne vérifait pas. Il tombe maintenant sur une étape ratée, une erreur JavaScript, ou un rapport absent. Son étape `glisse-ne-tire-pas` attend douze images de glissement continu avant de conclure, parce qu'une étape qui doit observer un *non* verrait sinon sa condition vraie avant que l'action ait eu le moindre effet.
+
+Contrôle négatif vérifié : le tir automatique remis en place, l'étape échoue et le test sort en 1.
 
 `balance.model.mjs` contient les mêmes constantes que `game.js` — si tu changes une courbe dans le jeu, change-la aussi dans le modèle, sinon les tests mentent.
 

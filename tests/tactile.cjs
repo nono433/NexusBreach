@@ -1,5 +1,5 @@
 // Test du mode tactile : simule des doigts (PointerEvents pointerType
-// 'touch') et verifie joystick, visee, tir automatique et pause tactile.
+// 'touch') et verifie joystick, visee, separation du tir et pause tactile.
 // Le jeu est charge avec ?tactile=1 pour forcer le mode tactile.
 //
 // Chaque action est rejouee tant qu'elle n'a pas pris : le module du jeu
@@ -84,14 +84,30 @@ server.listen(PORT, '127.0.0.1', () => {
       agir: function () { pointeur('pointermove', 1, 200, 250); },
       condition: function () { return true; },
       assertion: function () { return { fait: true }; } },
-    { nom: 'tir-automatique',
-      agir: function () { pointeur('pointerdown', 2, 700, 300); },
-      condition: function () { return true; },
-      assertion: function () { return { munitionsAvant: d.getElementById('ammo-value').textContent }; } },
-    { nom: 'tir-apres-glisse',
-      agir: function () { pointeur('pointermove', 2, 640, 280); },
+    { nom: 'glisse-ne-tire-pas',
+      agir: function () { pointeur('pointerdown', 2, 700, 300);
+        pointeur('pointermove', 2, 660, 290); pointeur('pointermove', 2, 620, 275);
+        pointeur('pointermove', 2, 600, 270); },
+      // Douze images de glissement continu avant de conclure. Le tir
+      // automatique partirait a la premiere : sans cette attente, la
+      // condition serait vraie avant que l action ait eu le moindre effet, et
+      // l etape passerait sans rien tester. C est le controle negatif de la
+      // separation : sur l ancien code, ce glissement vidait le chargeur.
+      condition: function () {
+        return imagesTotal - departEtape >= 12
+          && d.getElementById('ammo-value').textContent === '30';
+      },
+      assertion: function () { return { munitions: d.getElementById('ammo-value').textContent,
+        viseeSeule: d.getElementById('ammo-value').textContent === '30' }; } },
+    { nom: 'bouton-tir-tire',
+      agir: function () { bouton('pointerdown', 3, 'touch-fire'); },
       condition: function () { return d.getElementById('ammo-value').textContent !== '30'; },
-      assertion: function () { return { munitionsApres: d.getElementById('ammo-value').textContent, tire: d.getElementById('ammo-value').textContent !== '30' }; } },
+      assertion: function () { return { munitionsApres: d.getElementById('ammo-value').textContent,
+        tire: d.getElementById('ammo-value').textContent !== '30' }; } },
+    { nom: 'relacher-bouton-tir',
+      agir: function () { bouton('pointerup', 3, 'touch-fire'); },
+      condition: function () { return true; },
+      assertion: function () { return { fait: true }; } },
     { nom: 'relacher-doigts',
       agir: function () { pointeur('pointerup', 1, 200, 250); pointeur('pointerup', 2, 640, 280); },
       condition: function () { return !d.getElementById('touch-stick').classList.contains('active'); },
@@ -131,15 +147,23 @@ server.listen(PORT, '127.0.0.1', () => {
       assertion: function () { return { coucheVisible: getComputedStyle(d.getElementById('touch-layer')).display !== 'none' }; } }
   ];
   var index = 0;
+  // Compteur global d images. Une etape qui doit observer un NON doit
+  // attendre que l effet ait eu lieu de se produire : sinon sa condition est
+  // vraie avant meme que l action fasse quoi que ce soit, et elle passe sans
+  // rien tester.
+  var imagesTotal = 0;
+  var departEtape = 0;
   function etape() {
     if (index >= etapesTest.length) {
       fetch('/rapport', { method: 'POST', body: JSON.stringify({ erreurs: window.__log, etapes: etapes }) });
       return;
     }
     var courante = etapesTest[index];
+    departEtape = imagesTotal;
     var images = 0;
     function essayer() {
       images += 1;
+      imagesTotal += 1;
       if (courante.agir) courante.agir();
       if (courante.condition && !courante.condition()) {
         if (images > 90) {
@@ -167,19 +191,27 @@ server.listen(PORT, '127.0.0.1', () => {
   function finish() {
     clearTimeout(killer);
     try { edge.kill('SIGKILL'); } catch (e) {}
+    let enEchec = 0;
     if (report && report.etapes) {
       console.log('erreurs :', JSON.stringify(report.erreurs));
       for (const e of report.etapes) {
         const details = Object.keys(e).filter((k) => k !== 'etape').map((k) => `${k}=${e[k]}`).join('  ');
         console.log(`  ${e.etape.padEnd(28)} ${details}`);
+        if (e.etape.indexOf('ECHEC') >= 0) enEchec += 1;
       }
     } else {
+      enEchec += 1;
       console.log('Aucun rapport.', report ? JSON.stringify(report).slice(0, 300) : '');
     }
+    if (report && report.erreurs && report.erreurs.length) enEchec += report.erreurs.length;
     try { fs.unlinkSync(path.join(ROOT, '__smoke.html')); } catch (e) {}
     try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch (e) {}
     server.close();
-    process.exit(0);
+    // Le test sortait toujours en 0, y compris apres une etape en echec : il
+    // rapportait, il ne verifiait pas. Une etape ratee, une erreur JavaScript
+    // ou un rapport absent font maintenant tomber le test.
+    if (enEchec) console.log(`\n  ${enEchec} PROBLEME(S) : voir les lignes ECHEC ci-dessus.`);
+    process.exit(enEchec ? 1 : 0);
   }
   const poll = setInterval(() => { if (done) { clearInterval(poll); setTimeout(finish, 300); } }, 300);
 });

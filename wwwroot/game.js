@@ -5650,8 +5650,10 @@ function onPointerLockChange() {
 // TroisAmenagements propres au tactile :
 //  - pas de pointer lock : le menu Pause a besoin d'un bouton, sinon on ne
 //    peut jamais s'arreter ;
-//  - le tir est automatique pendant le glissement de visee, sinon il faut
-//    garder un doigt sur l'ecran pour viser et un autre pour tirer ;
+//  - viser et tirer sont deux gestes separes. Le glissement a droite ne fait
+//    que viser ; le tir ne part que du bouton TIR. C'etait fondus dans le meme
+//    geste, et toute correction de visee partait en rafale, avec les munitions
+//    qui s'ecoulaient pendant que le joueur regardait ou poser son doigt ;
 //  - les evenements Pointer sont multi-touch, il faut donc suivre un
 //    identifiant par role (joystick / visee) et non compter les doigts.
 // ===========================================================================
@@ -5668,8 +5670,7 @@ const TOUCH = {
   lookId: -1,
   lookX: 0,
   lookY: 0,
-  // Le tir automatique est actif quand on glisse pour viser.
-  firing: false,
+  // Seul le bouton TIR arme le tir. Glisser pour viser ne declenche rien.
   fireButton: false
 };
 
@@ -5730,7 +5731,6 @@ function releaseTouchLook() {
   TOUCH.lookId = -1;
   TOUCH.lookX = 0;
   TOUCH.lookY = 0;
-  TOUCH.firing = false;
 }
 
 // Relache tout l'etat tactile. Appele a chaque changement d'etat de jeu,
@@ -5776,7 +5776,7 @@ function initTouchControls() {
   // l'une ni l'autre n'existent, et le message faisait croire au joueur que
   // le jeu etait casse.
   if (IS_TOUCH && ui.pointerNote) {
-    ui.pointerNote.textContent = 'Glissez à droite pour viser et tirer. Le bouton ❚❚ met en pause.';
+      ui.pointerNote.textContent = 'Glissez à droite pour viser. Le bouton TIR tire, le bouton pause arrête.';
   }
   if (!IS_TOUCH) return;
 
@@ -5824,9 +5824,6 @@ function initTouchControls() {
       TOUCH.lookX = event.clientX;
       TOUCH.lookY = event.clientY;
       applyTouchLook(dx, dy);
-      // Tir automatique pendant la visee : c'est ce qui permet de ne pas
-      // garder un second doigt sur un bouton.
-      TOUCH.firing = true;
       if (Math.hypot(dx, dy) > 0.4) audio.unlockTouch();
     }
   }, { passive: false });
@@ -5876,8 +5873,13 @@ function applyTouchMovement(move, forward, right) {
   return move;
 }
 
+// Le tactile ne tire QUE par le bouton TIR. Viser et tirer etaient fondus dans
+// le meme geste : glisser pour viser declenchait aussi la arme, ce qui
+// transformait chaque correction de visee en rafale. Le joueur ne pouvait plus
+// s'aligner sans tirer, et les munitions partaient pendant qu'il regardait
+// ou il allait poser son doigt.
 function isTouchFiring() {
-  return TOUCH.firing || TOUCH.fireButton;
+  return TOUCH.fireButton;
 }
 function initEvents() {
   ui.startButton.addEventListener('click', startNewGame);
