@@ -4161,24 +4161,44 @@ function spawnAbilityEffect(radius, color) {
   ripples.push({ mesh: ring, life: 0.65, maxLife: 0.65, startScale: 0.15, endScale: 1.15 });
 }
 
+// Espace declenche deux choses chez l'Assassin : sa capacite de classe et son
+// dash. Elles ne doivent pas se remplacer l'une l'autre.
+//
+// Ce que faisait le code avant : des qu'une capacite etait achetee, la touche
+// appartenait a la capacite. Pendant sa recharge, l'appui ne déclenchait
+// RIEN, et le dash devenait injoignable pendant 12 a 26 secondes d'affilee. Le
+// PAS OMBRE, dont la description promet un dash libre pendant 6 s, remettait le
+// compteur a zero puis bloquait la touche qui sert a s'en servir : la capacite
+// faisait exactement l'inverse de ce qu'elle annoncait.
+//
+// La regle desormais : la capacite part quand elle est prete, le dash prend le
+// relais quand elle recharge, et il ne se passe rien seulement quand les deux
+// sont indisponibles. Les deux ressources s'additionnent, chacune garde son
+// propre temps de recharge.
 function activateAbility() {
   if (state !== GAME_STATE.PLAYING) return;
   const isAssassin = player.classId === 'assassin';
-  // Sans capacité achetée, l'Assassin garde son dash : c'est sa seule
-  // ressource de base, elle ne doit pas disparaître au rang 0.
-  if (isAssassin && !player.abilityId) {
+  const ability = getAbilityDefinition(player.abilityId);
+  const abilityUtilisable = Boolean(ability) && ability.classId === player.classId;
+  const dashPret = isAssassin && player.dashCooldown <= 0;
+
+  if (abilityUtilisable && player.abilityCooldown <= 0) {
+    // La capacite part, et le dash reste disponible immediat apres.
+  } else if (dashPret) {
     activateDash();
     return;
-  }
-  const ability = getAbilityDefinition(player.abilityId);
-  if (!ability || ability.classId !== player.classId) {
+  } else if (!abilityUtilisable) {
     abilityMessage = "ACHÈTE UNE CAPACITÉ DANS L'ATELIER";
     abilityMessageTimer = 1.8;
-    if (isAssassin) activateDash();
     return;
-  }
-  if (player.abilityCooldown > 0) {
-    abilityMessage = `CAPACITÉ // RECHARGE ${player.abilityCooldown.toFixed(1)}s`;
+  } else {
+    // Les deux sont en recharge : on dit laquelle, pour eviter un appui
+    // muet que le joueur interpretait comme un bug.
+    const capacite = player.abilityCooldown.toFixed(1);
+    const dash = isAssassin ? player.dashCooldown.toFixed(1) : null;
+    abilityMessage = isAssassin
+      ? `CAPACITÉ ${capacite}s // DASH ${dash}s`
+      : `CAPACITÉ // RECHARGE ${capacite}s`;
     abilityMessageTimer = 0.8;
     return;
   }
@@ -5363,16 +5383,21 @@ function updateHUD() {
     hudCache.weaponStats = weaponStatsText;
   }
 
-  // L'Assassin a une capacite de classe, pas un dash nu : le libelle doit
-  // suivre l'equipement, sinon le HUD ment sur ce que Espace declenche.
+  // L'Assassin a une capacite de classe ET un dash, tous deux sur Espace. Le
+  // HUD doit montrer les deux : sinon le joueur voit "ESPACE // PRET" pendant
+  // que son dash recharge, et croit que l affichage est faux.
   const ability = getAbilityDefinition(player.abilityId);
   const hasDash = isAssassin;
+  const dashPret = hasDash && player.dashCooldown <= 0;
+  const dashTexte = hasDash
+    ? `DASH ${player.dashCooldown > 0 ? player.dashCooldown.toFixed(1) + 's' : 'PRÊT'}`
+    : '';
   const abilityStatus = abilityMessageTimer > 0
     ? abilityMessage
     : ability
       ? player.abilityCooldown > 0
-        ? `RECHARGE // ${player.abilityCooldown.toFixed(1)}s`
-        : 'ESPACE // PRÊT'
+        ? `RECHARGE ${player.abilityCooldown.toFixed(1)}s // ${dashTexte}`
+        : `ESPACE // PRÊT${hasDash ? ' // DASH ' + player.dashCooldown.toFixed(1) + 's' : ''}`
       : hasDash
         ? player.dashCooldown > 0
           ? `DASH // ${player.dashCooldown.toFixed(1)}s`
@@ -5387,8 +5412,11 @@ function updateHUD() {
     ui.abilityStatus.textContent = abilityStatus;
     hudCache.abilityStatus = abilityStatus;
   }
-  const abilityReady = ability ? player.abilityCooldown <= 0 : hasDash && player.dashCooldown <= 0;
-  const abilityCooling = ability ? player.abilityCooldown > 0 : hasDash && player.dashCooldown > 0;
+  // La touche est prete des qu UNE des deux ressources l'est : c est
+  // maintenant la regle reelle, l ancien test ne regardait que la capacite et
+  // affirmait donc "pret" pendant que le dash etait indisponible.
+  const abilityReady = ability ? player.abilityCooldown <= 0 || dashPret : dashPret;
+  const abilityCooling = ability ? player.abilityCooldown > 0 && !dashPret : !dashPret && hasDash;
   ui.abilityReadout.classList.toggle('ready', abilityReady);
   ui.abilityReadout.classList.toggle('cooling', abilityCooling);
   // Le <span> existe une seule fois dans le HUD : on le resout une fois au
@@ -5402,8 +5430,11 @@ function updateHUD() {
     }
   }
 
-  if (isAssassin && !ability) {
-    // Sans capacite de classe, le bandeau du bas affiche l'etat du sabre.
+  if (isAssassin) {
+    // Le bandeau du bas affiche l'etat du sabre ET celui du dash, avec ou sans
+    // capacite de classe. Avant, il n'affichait le dash que lorsqu'aucune
+    // capacite etait equipee : le joueur n'avait donc aucun moyen de savoir que
+    // son dash revenait, ni quand.
     const assassinStatus = player.slashTimer > 0
       ? 'FRAPPE // ACTIVE'
       : player.dashCooldown > 0
@@ -6032,6 +6063,21 @@ function init() {
     // de mesurer ce que fait reellement un projectile, et non de le deduire
     // d une baisse de la barre de vie qui peut aussi venir d un contact.
     window.__nexus.derniersDegats = () => journalDegats.filter(Boolean);
+    // Etat de la touche d'action. L'Assassin a deux ressources sur la meme
+    // touche, la capacite et le dash, et le HUD n'en montrait qu'une : sans
+    // cette lecture, on ne peut pas verifier que les deux restent accessibles.
+    window.__nexus.etatAction = () => {
+      const cap = getAbilityDefinition(player.abilityId);
+      return {
+        classe: player.classId,
+        capacite: player.abilityId,
+        cdCapacite: player.abilityCooldown,
+        cdDash: player.dashCooldown,
+        pretCapacite: Boolean(cap) && cap.classId === player.classId
+          && player.abilityCooldown <= 0,
+        pretDash: player.classId === 'assassin' && player.dashCooldown <= 0
+      };
+    };
     // Saut de vague, pour cette meme capture. Sans lui, elle est impossible :
     // un joueur immobile ne termine pas la vague 1, or la vague 1 ne contient
     // que des Radeurs, et un Radeur ne tire pas. Il n'y a donc aucun

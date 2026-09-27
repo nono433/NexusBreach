@@ -80,6 +80,16 @@ Quelques différences avec le PC, assumées :
 
 Si tu veux tester les commandes tactiles depuis un ordinateur, ajoute `?tactile=1` à l’adresse.
 
+### L'Assassin : deux ressources, une touche
+
+L'Assassin a un **dash** et une **capacité de classe**, tous deux sur Espace. Ils s'additionnent : la capacité part quand elle est prête, le dash prend le relais quand elle recharge, et il ne se passe rien seulement quand les deux sont en attente.
+
+Ce n'était pas le cas. La touche appartenait entièrement à la capacité dès qu'une capacité était achetée, et pendant sa recharge l'appui ne faisait **rien**. Le dash devenait donc injoignable pendant 12 à 26 secondes d'affilée, selon la capacité. Le pire exemple : **PAS OMBRE** promet dans sa description « reset immédiat du dash et +50 % de dégâts pendant 6 secondes » — il remettait le compteur à zéro, puis bloquait la touche qui sert à s'en servir. La capacité faisait exactement l'inverse de ce qu'elle annonçait.
+
+Le HUD cachait le problème : le bandeau du bas n'affichait l'état du dash que lorsqu'aucune capacité n'était équipée, et l'indicateur « prêt » ne regardait que la capacité. Il fallait donc deviner quand le dash revenait.
+
+`tests\dash-assassin.cjs` conduit une vraie partie en Assassin avec PAS OMBRE, presse Espace huit fois par de vrais événements clavier, et compte. Son contrôle négatif est dans le même passage : il compte les dash déclenchés *pendant que la capacité recharge*, le cas que l'ancien code refusait en bloc. Zéro de ces dash, et le test échoue. Remis en place tel quel, l'ancien code donne **0 dash et 7 refus injustifiés** sur 8 appuis ; le code actuel donne **6 dash et 0 refus**.
+
 ### Les ennemis
 
 Ce sont des **robots humanoïdes cubiques** : corps sombre, contours lumineux, visière cyan. Tout est construit en code, à partir de boîtes, sans aucun fichier 3D externe.
@@ -159,6 +169,7 @@ node tests\chevauchement.cjs   # cartes de l'Atelier de 1100 à 360 px
 node tests\roles-ennemis.cjs     # 4 Chargeurs, 4 Tireurs, et l'IA respecte le rôle
 node tests\equilibrage-tir.mjs   # ce que le tir coûte, en temps de survie
 node tests\tir-distance.cjs      # ce qu'un projectile inflige, mesuré dans le jeu
+node tests\dash-assassin.cjs     # la capacité s'ajoute au dash, elle ne le remplace pas
 node tests\pilote-cdp.cjs        # le pilote de navigateur est-il fiable ?
 node tests\capture-projectile.cjs # un projectile en vol, et sa taille en pixels
 node tests\capture-robots.cjs    # l'aperçu des robots est bien rendu
@@ -194,6 +205,7 @@ Les diagnostics dont ces deux tests ont besoin sont sur `window.__nexus`, qui es
 - `sonderProjectiles()` — ce que voit le joueur d'un projectile : distance, taille **en pixels**, position à l'écran. C'est ce chiffre qui a répondu à la plainte, et la réponse était 3 pixels.
 - `derniersDegats()` — les derniers coups encaissés, avec leur **origine** (`tir` ou `contact`) et un numéro d'ordre. Le numéro est indispensable : le journal est circulaire, donc sans lui un test qui le relit compte le même coup plusieurs fois.
 - `allerVague(n)` — sauter à une vague. Sans lui, la capture est impossible : un joueur immobile ne termine pas la vague 1, or la vague 1 ne contient que des Rôdeurs, et un Rôdeur ne tire pas.
+- `etatAction()` — l'état de la touche d'action de l'Assassin : les deux recharges et ce qui est prêt. Le HUD n'en montrait qu'une, il fallait donc pouvoir lire les deux.
 
 `hud.cjs` compare les blocs du HUD en **encre visible** (le texte) ou en boîte peinte (les boutons), jamais en boîte de conteneur : un élément de grille est étiré sur toute sa cellule, donc deux frères voisins se toucheraient toujours alors que leurs libellés sont bien séparés. Un contrôle négatif est documented dans le fichier : remettre les boutons d’action en bas doit faire échouer le test.
 
