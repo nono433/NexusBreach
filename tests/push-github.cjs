@@ -132,37 +132,16 @@ if (require.main === module) (async () => {
   console.log(`\nnouvel arbre : ${newTree.sha}`);
 
   const message = [
-    'Le depot reprend les fichiers de ce poste, et rien d autre',
+    'Audit du depot : il dependait du quota anonyme, tombe a zero',
     '',
-    'Ce commit ecrase 8917d1a "Tank jouable, rebalance Assassin et trois',
-    'nouvelles armes", qui avait ete pousse sur le depot mais n existe pas sur',
-    'ce poste.',
+    'tests/audit-depot.cjs compare le depot et le disque fichier par fichier.',
+    'C est lui qui a revele le commit 8917d1a, que je n avais pas fait et qui',
+    'n existait pas sur ce poste.',
     '',
-    'Ce qui etait dans 8917d1a, et qui disparait du site :',
-    '- une classe TANK debloable a 3 500 CR, avec deux armes et deux',
-    '  ameliorations exclusives',
-    '- un reequilibrage de l Assassin, et trois nouvelles armes',
-    '- TROIS corrections de bugs qui n existent pas sur ce poste :',
-    '  une frappe multi-cibles comptait un tir par ennemi touche, ce qui',
-    '  gonflait la precision et les credits de fin de partie ;',
-    '  changer d arme en cours de partie ne mettait a jour que l identifiant,',
-    '  portee recharge cadence et nombre de cibles restaient ceux de l arme',
-    '  precedente ;',
-    '  appliquerChargeurArme() resolvait a l envers de resetStats(), donc une',
-    '  arme s affichait avec les degats de la classe.',
-    '- le schema de sauvegarde passe en version 2',
-    '- le menu passe a trois colonnes',
-    '',
-    'Rien n est perdu definitivement :',
-    '- le commit reste dans l historique du depot,',
-    '- il a ete telecharge en entier sur ce poste, dans le dossier VOISIN',
-    '  NexusBreach-depot-8917d1a, 58 fichiers verifies un par un par leur SHA',
-    '  git. Le dossier est hors du projet, donc il ne sera jamais pousse.',
-    '- tests/recuperer-depot.cjs fait le telechagement, verification comprise.',
-    '',
-    'tests/audit-depot.cjs compare le depot et le disque fichier par fichier :',
-    'il distingue ce qui est en trop sur le depot, ce qui manque, et ce qui',
-    'differait. C est lui qui a revele le commit etrange.'
+    'Il interrogeait l API sans jeton, et le quota anonyme est de 60 requetes',
+    'par heure alors que l audit en fait une par fichier. Il echouait donc en',
+    'cours de route, sans jamais donner son verdict.',
+    'Il passe maintenant par GH_TOKEN, comme le push.'
   ].join('\n');
 
   const commit = await api('POST', `${API}/git/commits`, {

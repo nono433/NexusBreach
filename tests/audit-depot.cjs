@@ -17,6 +17,22 @@ const ROOT = path.join(__dirname, '..');
 const API = 'https://api.github.com/repos/nono433/NexusBreach';
 const { IGNORED_FILES, ignoreDirectory } = require('./push-github.cjs');
 
+// L'audit interroge l'API pour chaque fichier : le quota anonyme de 60
+// requetes par heure est donc depasse en quelques secondes. Le jeton vient de
+// l'environnement et n'est jamais affiche.
+const jeton = process.env.GH_TOKEN;
+const entetes = jeton
+  ? { Authorization: 'Bearer ' + jeton, 'User-Agent': 'nexus-audit' }
+  : { 'User-Agent': 'nexus-audit' };
+const api = async (chemin) => {
+  const r = await fetch(API + chemin, { headers: entetes });
+  if (!r.ok) {
+    throw new Error(chemin + ' -> HTTP ' + r.status
+      + '   (quota restant : ' + (r.headers.get('x-ratelimit-remaining') || '?') + ')');
+  }
+  return r.json();
+};
+
 // Meme collecte que tests\apercu-push.cjs : les regles d exclusion viennent du
 // script de push, pas d une copie qui pourrait diverger.
 const locaux = new Map();
@@ -37,11 +53,10 @@ function collect(dir) {
 collect(ROOT);
 
 (async () => {
-  const tete = await (await fetch(`${API}/git/ref/heads/main`)).json();
+  const tete = await api('/git/ref/heads/main');
   const commit = tete.object.sha;
-  const arbre = await (await fetch(`${API}/git/commits/${commit}`)).json();
-  const listing = await (await fetch(
-    `${API}/git/trees/${arbre.tree.sha}?recursive=1`)).json();
+  const arbre = await api('/git/commits/' + commit);
+  const listing = await api('/git/trees/' + arbre.tree.sha + '?recursive=1');
 
   const distants = new Map();
   for (const entree of listing.tree || []) {
@@ -50,14 +65,13 @@ collect(ROOT);
 
   const enTrop = [...distants.keys()].filter((p) => !locaux.has(p));
   const manquants = [...locaux.keys()].filter((p) => !distants.has(p));
-  // Pour l egalite du contenu, il faut la taille et le sha git de chaque blob
-  // local. Comparer des sha256 a des sha git n'aurait pas de sens.
+  // L egalite du contenu se verifie en recalculant le SHA git d chaque blob
+  // local : un SHA-256 n aurait rien a voir avec le SHA que le depot annonce.
   const differents = [];
-  for (const [chemin, sha] of locaux) {
+  for (const [chemin] of locaux) {
     const distant = distants.get(chemin);
     if (!distant) continue;
-    const blob = await (await fetch(`${API}/git/blobs/${distant}`)).json();
-    const contenu = Buffer.from(blob.content || '', 'base64');
+    const contenu = fs.readFileSync(path.join(ROOT, chemin));
     const shaLocal = crypto.createHash('sha1')
       .update(Buffer.concat([Buffer.from('blob ' + contenu.length + '\0'), contenu]))
       .digest('hex');
