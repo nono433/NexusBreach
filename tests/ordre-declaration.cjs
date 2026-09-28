@@ -7,7 +7,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DECLARATION = "const CLASS_DEFAULT_WEAPON = Object.freeze({ ranger: 'pulse', assassin: 'twinSabers' });";
+const DECLARATION = "const CLASS_DEFAULT_WEAPON = Object.freeze({ ranger: 'pulse', assassin: 'twinSabers', tank: 'bulwark' });";
 const ANCRE = 'function resolveWeaponForClass(id, classId) {';
 
 function remettrePlusBas(source) {

@@ -123,11 +123,20 @@ export const WEAPONS = {
   inferno: { raw: 6 * 18 * 3, eff: 0.6, price: 1100, targets: 1, degats: 6, cadence: 18, mag: 90, rech: 2.9 },
   plasma: { raw: 92 * 2.3 + 60, eff: 0.9, price: 1400, targets: 1, degats: 92, cadence: 2.3, mag: 14, rech: 2.4 },
   // Sabres : les degats par frappe touchent slashTargets ennemis.
-  twinSabers: { raw: 48 * 2.7, eff: 1, price: 0, targets: 1.75, melee: true },
+  // L'arme de base de l'Assassin a ete reequilibree (38 x 3.1 au lieu de
+  // 48 x 2.7) : meme debit brut, mais une cadence lisible et des frappes qui
+  // encaissent moins. Les valeurs ci-dessous sont celles de game.js.
+  twinSabers: { raw: 38 * 3.1, eff: 1, price: 0, targets: 1.75, melee: true },
   heavySaber: { raw: 108 * 1.85, eff: 1, price: 700, targets: 1, melee: true },
   twinFang: { raw: 35 * 3.5, eff: 1, price: 850, targets: 2.5, melee: true },
   shuriken: { raw: 29 * 9, eff: 0.9, price: 1100, targets: 1 },
-  shadowStep: { raw: 76 * 2.4, eff: 1, price: 1500, targets: 1.75, melee: true }
+  shadowStep: { raw: 76 * 2.4, eff: 1, price: 1500, targets: 1.75, melee: true },
+  bloodFangs: { raw: 58 * 2.15, eff: 1, price: 2200, targets: 1.75, melee: true },
+  stormFangs: { raw: 27 * 4.6, eff: 1, price: 3600, targets: 2.5, melee: true },
+  executioner: { raw: 78 * 1.55, eff: 1, price: 5200, targets: 1.75, melee: true },
+  // Armes du Tank : canons lents, forte perforation, forte portee.
+  bulwark: { raw: 34 * 4.4, eff: 1, price: 0, targets: 1.75, degats: 34, cadence: 4.4, mag: 40, rech: 2.1 },
+  siege: { raw: (88 + 74) * 1.5, eff: 0.85, price: 1800, targets: 2.4, degats: 88, cadence: 1.5, mag: 8, rech: 3 }
 };
 
 // Debit reellement soutenu, recharge comprise.

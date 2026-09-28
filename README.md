@@ -11,9 +11,9 @@ Jeu de tir en vue à la première personne avec vagues de monstres et améliorat
 - Les modules achetés sont automatiquement actifs au début de la prochaine partie. Les améliorations affichées entre les vagues restent temporaires à la partie en cours.
 - Deux cartes sont disponibles : **NEXUS** et **FOUNDRY**. La carte sélectionnée est sauvegardée dans le navigateur. Nexus conserve ses quatre mobs standards, tandis que Foundry possède quatre machines personnalisées et plus fortes : **Crawleur de Scorie**, **Rôdeur de Braise**, **Colosse de Laitier** et **Forge-Monarque**.
 
-## Les deux classes
+## Les trois classes
 
-Les classes ne sont plus deux variantes du même jeu : **armes, capacités, améliorations et modules d’atelier sont exclusifs à chaque classe.** L’atelier n’affiche que ce qui est réellement accessible.
+Les classes ne sont plus des variantes du même jeu : **armes, capacités, améliorations et modules d’atelier sont exclusifs à chaque classe.** L’atelier n’affiche que ce qui est réellement accessible.
 
 ### RANGER — tir à distance, contrôle de zone
 
@@ -25,13 +25,20 @@ Les classes ne sont plus deux variantes du même jeu : **armes, capacités, amé
 
 ### ASSASSIN — corps à corps, mobilité, exécution
 
-- **84 PV**, vitesse 7,3. Plus rapide et plus fragile : il doit entrer dans la mêlée.
-- **5 armes** : LAMES JUMELLES (départ, 2 cibles), LAME SPATULE (1 cible, 108 dégâts), CROCS JUMELS (3 cibles, rapide), SHURIKEN VOLANT (lancer à distance, 9 coups/s), PAS D’OMBRE (la frappe voyage avec le dash).
+- **85 PV**, vitesse 7,8. Plus rapide et plus fragile : il doit entrer dans la mêlée.
+- **8 armes** : LAMES JUMELLES (départ, 2 cibles), LAME SPATULE (1 cible, 108 dégâts), CROCS JUMELS (3 cibles, rapide), SHURIKEN VOLANT (lancer à distance, 9 coups/s), PAS D’OMBRE (la frappe voyage avec le dash), SANG // CROCS (exécution accrue et soin par élimination), TEMPÊTE // ÉCLAIR (cadence élevée, 3 cibles), EXEC // FAUX (frappe très lente, exécution devastatrice).
 - **4 capacités** : PAS OMBRE (reset le dash, +50 % de dégâts), VOILE SOMBRE (invisible 1,5 s, la frappe suivante est un headshot garanti), SANG-DÉCHIRÉ (+45 % de dégâts, 6 PV par élimination), HEURE DE CENDRE (ralentit 55 %, 90 dégâts au plus résistant).
 - **7 améliorations** exclusives : Lames affûtées, Tempête jumelle, Voile d’ombre, Sang d’Ombre, Sentence, Allonge, Garde d’ombre.
 - **3 modules** d’atelier : Fil des lames, Tendon synthétiques, Pacte de sang.
 
-### Partagés par les deux classes
+### TANK — blindage, résistance, tir lourd
+
+- **120 PV**, vitesse 4,8, réduction innate de 10 % des dégâts.
+- **2 armes** : BULWARK // ANVIL (départ, 34 dégâts, perforation) et SIEGE // BREAKER (88 dégâts, explosion de zone).
+- **2 améliorations** exclusives : Obus calibré, Gâche lourde.
+- Il utilise les améliorations et modules communs de l’Atelier : **Exosquelette** et **Stabilisateurs** y sont particulièrement solides.
+
+### Partagés par les classes
 
 - **3 améliorations** : Exosquelette, Propulseurs, Stabilisateurs.
 - **2 modules** d’atelier : Noyau blindé, Réseau neural.
