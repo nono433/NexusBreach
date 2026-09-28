@@ -52,8 +52,10 @@ async function appuyer(session, touche, code, vk) {
     // elle-meme vit dans la sauvegarde, qui prevaut sur la cle du stockage.
     async function demarrer(uneClasse, carteCapacite) {
       const s = await ouvrir(PAGE, RACINE, { largeur: 900, hauteur: 520, query: 'tactile=1' });
-      await s.evaluer("localStorage.setItem('nexus-breach-credits', '999999'); true");
-      await s.envoyer('Page.reload');
+      // Credits ecrits AVANT que le jeu ne lise son stockage : l'Assassin
+      // coute 2 500 CR, et une ecriture apres coup se fait écraser par le
+      // profil que le jeu enregistre au premier chargement.
+      await s.preparerStockage({ 'nexus-breach-credits': '999999' });
       const pret = await s.attendre(
         'Boolean(window.__nexus && window.__nexus.pret)', 60000);
       if (!pret) throw new Error("le jeu ne s'initialise pas");
@@ -103,7 +105,12 @@ async function appuyer(session, touche, code, vk) {
 
     const lireBouton = (s) => s.evaluer(`(() => {
       const b = document.getElementById('touch-dash');
-      return b ? { existe: true, visible: getComputedStyle(b).display !== 'none' } : { existe: false };
+      return {
+        existe: Boolean(b),
+        visible: b ? getComputedStyle(b).display !== 'none' : false,
+        racine: document.documentElement.className,
+        classeJoueur: window.__nexus.etatAction().classe
+      };
     })()`);
 
     // D'abord le Ranger : le bouton DASH ne doit pas exister pour lui.
@@ -124,6 +131,7 @@ async function appuyer(session, touche, code, vk) {
     const boutonDash = await lireBouton(session);
     console.log('  bouton DASH tactile : ' + (boutonDash.existe ? 'present' : 'ABSENT')
       + ', visible : ' + boutonDash.visible);
+    console.log('  racine="' + boutonDash.racine + '"  classe=' + boutonDash.classeJoueur);
     if (!boutonDash.existe) problemes.push('le bouton tactile DASH est absent du DOM');
     else if (!boutonDash.visible) problemes.push('le bouton DASH reste masque chez l Assassin');
 

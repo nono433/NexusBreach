@@ -7,7 +7,7 @@
   <meta name="description" content="Nexus Breach — un FPS de survie contre des vagues de monstres.">
   <title>Nexus Breach</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=14">
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
   <div id="game-shell">
@@ -183,20 +183,20 @@
 
     <section id="upgrade-screen" class="screen upgrade-screen" aria-label="Amélioration de l'équipement">
       <div class="upgrade-heading">
-        <p class="overline">ZONE SÉCURISÉE // ÉQUIPEMENT DISPONIBLE</p>
+        <p class="overline" id="upgrade-overline">ZONE SÉCURISÉE // ÉQUIPEMENT DISPONIBLE</p>
         <div class="upgrade-title-row">
           <div>
             <span>VAGUE <strong id="completed-wave">01</strong> NETTOYÉE</span>
-            <h2>AMÉLIOREZ VOTRE <em>ÉQUIPEMENT</em></h2>
+            <h2 id="upgrade-title">AMÉLIOREZ VOTRE <em>ÉQUIPEMENT</em></h2>
           </div>
           <div class="upgrade-count">
-            <span>MODULE</span>
-            <strong>01 / 01</strong>
+            <span id="upgrade-count-label">MODULE</span>
+            <strong id="upgrade-count">01 / 01</strong>
           </div>
         </div>
       </div>
       <div id="upgrade-options" class="upgrade-options"></div>
-      <p class="upgrade-footer">CHOISISSEZ UN MODULE POUR POURSUIVRE L'OPÉRATION</p>
+      <p class="upgrade-footer" id="upgrade-footer">CHOISISSEZ UN MODULE POUR POURSUIVRE L'OPÉRATION</p>
     </section>
 
     <section id="shop-screen" class="screen shop-screen" aria-label="Atelier d'équipement">
@@ -376,6 +376,6 @@
   })();
   </script>
 
-  <script type="module" src="game.js?v=27"></script>
+  <script type="module" src="game.js?v=28"></script>
 </body>
 </html>

@@ -20,6 +20,14 @@ const ui = {
   retryButton: document.querySelector('#retry-button'),
   upgradeOptions: document.querySelector('#upgrade-options'),
   completedWave: document.querySelector('#completed-wave'),
+  // Titres de l'ecran de fin de vague. Le Ranger n'y a plus le meme choix que
+  // l'Assassin : son titre doit annoncer le vrai arbitrage, sinon l'ecran
+  // promet des modules la ou il propose de se soigner.
+  upgradeOverline: document.querySelector('#upgrade-overline'),
+  upgradeTitle: document.querySelector('#upgrade-title'),
+  upgradeCountLabel: document.querySelector('#upgrade-count-label'),
+  upgradeCount: document.querySelector('#upgrade-count'),
+  upgradeFooter: document.querySelector('#upgrade-footer'),
   waveValue: document.querySelector('#wave-value'),
   enemyValue: document.querySelector('#enemy-value'),
   waveBanner: document.querySelector('#wave-banner'),
@@ -590,15 +598,6 @@ const UPGRADE_DEFINITIONS = {
     color: '#f6e45c',
     max: 3,
     icon: '<path d="m8 32 17-17 8 8L16 40l-8-8Z"/><path d="m25 15 8-8 8 8-8 8M34 39l8-8 12 12-8 8-12-12Z"/><path d="m45 12 10-5M41 18l12 2"/>'
-  },
-  repair: {
-    classId: 'ranger',
-    name: 'Nanites réparateurs',
-    description: 'Récupérez +1,2 PV par seconde et par niveau.',
-    short: 'RÉGÉNÉRATION',
-    color: '#ff77c8',
-    max: 6,
-    icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M20 28h8l3-6 4 13 3-7h8"/>'
   },
   focus: {
     classId: 'ranger',
@@ -2354,7 +2353,6 @@ const UPGRADE_VALUES = {
   fireRatePer: 0.11,
   armorPer: 28,
   speedPer: 0.06,
-  regenPer: 1.2,
   reductionPer: 0.15,
   reductionCap: 0.68,
   magazinePer: 8,
@@ -2389,8 +2387,13 @@ function applyUpgradeStats() {
     + UPGRADE_VALUES.poiseHealthPer * (upgrades.shadowPoise || 0);
   player.health = Math.min(player.maxHealth, player.health);
   player.speed = player.baseSpeed * (1 + UPGRADE_VALUES.speedPer * (upgrades.speed || 0)) * permanent.speedMultiplier;
+  // Le Ranger n'a plus AUCUNE source de soin : ni capacite, ni amelioration.
+  // Les Nénithes réparateurs ont ete retires, et avec eux la seule voie qui
+  // le rendait. Ce qui reste ici n'appartient qu a l'Assassin (poise) ou a
+  // l'atelier permanent, dont la valeur de regeneration est nulle par
+  // construction : sans ce commentaire, la ligne suivante semble regagner de
+  // la vie par elle-meme.
   player.regen = permanent.regen
-    + UPGRADE_VALUES.regenPer * (upgrades.repair || 0)
     + UPGRADE_VALUES.poiseRegenPer * (upgrades.shadowPoise || 0);
   player.damageReduction = Math.min(
     UPGRADE_VALUES.reductionCap,
@@ -5102,22 +5105,144 @@ function startWave() {
   updateHUD();
 }
 
+// Le Ranger n'a plus aucune source de soin. Ni capacite, ni amelioration :
+// les Nénithes réparateurs ont ete retires de la liste. La seule regeneration
+// qui lui reste est celle-ci, et elle se paie en renoncant a un module.
+//
+// C'est un vrai arbitrage plutot qu'un menu a deux entrees : se soigner remet
+// la vie au maximum mais ne fait pas progresser l'equipement, et un module
+// augmente la puissance sans rien rendre. Les deux ne se cumulent pas.
+function rangerPeutSeRegen() {
+  return player.health < player.maxHealth;
+}
+
 function completeWave() {
   if (state !== GAME_STATE.PLAYING) return;
   const choices = getUpgradeChoices();
-  if (choices.length === 0) {
-    // Tous les modules sont au niveau maximum : on enchaîne sur la vague
-    // suivante plutôt que d'afficher un écran vide où aucun clic ne fait rien.
-    ui.waveBanner.classList.remove('show');
+  ui.waveBanner.classList.remove('show');
+
+  // Rien a offrir : on enchaine plutot que d'afficher un ecran vide ou aucun
+  // clic ne fait rien.
+  if (choices.length === 0 && !rangerPeutSeRegen()) {
     startWave();
     return;
   }
+
   state = GAME_STATE.UPGRADE;
   keys.clear();
   resetTouchState();
   if (document.pointerLockElement) document.exitPointerLock();
-  ui.waveBanner.classList.remove('show');
+
+  if (player.classId === 'ranger') {
+    showRangerChoice(choices);
+    return;
+  }
   showUpgradeChoices(choices);
+}
+
+// Ecran de fin de vague du Ranger : deux cartes, pas trois modules.
+//
+// La carte de regeneration disparaît quand la vie est deja au maximum : elle
+// ne ferait rien et occuperait la place d'un module. De meme, la carte
+// d'amelioration disparaît quand plus aucun module n'est disponible. Il ne reste
+// donc jamais une option morte a l'ecran.
+function showRangerChoice(choices) {
+  ui.completedWave.textContent = String(wave).padStart(2, '0');
+  ui.upgradeOverline.textContent = 'ZONE SÉCURISÉE // AUCUN SOIN DISPONIBLE';
+  ui.upgradeTitle.innerHTML = 'SOIGNEZ-VOUS OU <em>PROGRESSEZ</em>';
+  ui.upgradeCountLabel.textContent = 'CHOIX';
+  ui.upgradeCount.textContent = '1 / 1';
+  ui.upgradeFooter.textContent = 'LES DEUX OPTIONS S\'EXCLUENT : L\'UNE OU L\'AUTRE';
+  ui.upgradeOptions.innerHTML = '';
+
+  const blesser = rangerPeutSeRegen();
+  const progresser = choices.length > 0;
+
+  if (progresser) {
+    const manque = Math.max(0, Math.ceil(player.maxHealth - player.health));
+    ui.upgradeOptions.appendChild(carteRanger({
+      index: 0,
+      court: 'SOIN',
+      couleur: '#ff77c8',
+      rarete: `VIE ${Math.ceil(player.health)} / ${Math.round(player.maxHealth)}`,
+      titre: 'Régénération complète',
+      texte: `Vous rendez vos ${Math.round(player.maxHealth)} points de vie. `
+        + `Vous perdez cette vague l'accès aux modules.`,
+      icone: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/>'
+        + '<path d="M22 30h7l3-7 4 14 3-7h7"/>',
+      action: 'INSTALLER →',
+      actif: () => choisirRegeneneration()
+    }));
+    ui.upgradeOptions.appendChild(carteRanger({
+      index: 1,
+      court: 'MODULE',
+      couleur: '#00f5ff',
+      rarete: `${choices.length} MODULE${choices.length > 1 ? 'S' : ''} DISPONIBLE${choices.length > 1 ? 'S' : ''}`,
+      titre: 'Prendre une amélioration',
+      texte: 'Trois modules tirés au sort, comme toujours. Vous gardez vos '
+        + `${manque} points de vie manquants.`,
+      icone: '<path d="M20 44V22l12-10 12 10v22Z"/><path d="M28 44V32h8v12"/>',
+      action: 'VOIR LES MODULES →',
+      actif: () => {
+        // On repasse par l ecran habituel : meme tir aleatoire, meme
+        // profondeur. Le Ranger ne perd rien de ce cote-la, il perd
+        // simplement la regeneration qu il n aurait pas due avoir.
+        showUpgradeChoices(choices);
+      }
+    }));
+  } else {
+    // Aucun module disponible : la regeneration est la seule chose qui reste.
+    ui.upgradeTitle.innerHTML = '<em>RÉGÉNÉRATION</em> IMPOSÉE';
+    ui.upgradeOptions.appendChild(carteRanger({
+      index: 0,
+      court: 'SOIN',
+      couleur: '#ff77c8',
+      rarete: 'DERNIER MODULE INSTALLÉ',
+      titre: 'Régénération complète',
+      texte: 'Tous vos modules sont au niveau maximum. Il ne vous reste que '
+        + 'ce soin.',
+      icone: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/>'
+        + '<path d="M22 30h7l3-7 4 14 3-7h7"/>',
+      action: 'INSTALLER →',
+      actif: () => choisirRegeneneration()
+    }));
+  }
+
+  ui.upgrade.classList.add('active');
+  ui.interactionHint.classList.remove('hidden');
+  audio.upgrade();
+}
+
+function choisirRegeneneration() {
+  if (state !== GAME_STATE.UPGRADE) return;
+  player.health = player.maxHealth;
+  state = GAME_STATE.PLAYING;
+  ui.upgrade.classList.remove('active');
+  ui.interactionHint.classList.add('hidden');
+  applyUpgradeStats();
+  audio.reload();
+  startWave();
+}
+
+// Carte de l ecran binaire. Elle reprend le dessin des cartes de module pour
+// que l'ecran ne change pas de visage entre les deux etapes.
+function carteRanger(options) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'upgrade-card ranger-choice';
+  button.style.setProperty('--card-color', options.couleur);
+  button.innerHTML = `
+      <span class="card-index">OPT_0${options.index + 1} // ${options.court}</span>
+      <span class="card-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${options.icone}</svg></span>
+      <span class="card-rarity">${options.rarete}</span>
+      <h3>${options.titre}</h3>
+      <p>${options.texte}</p>
+      <span class="card-footer"><span class="level-pips"></span><span>${options.action}</span></span>
+    `;
+  button.addEventListener('click', () => {
+    if (state === GAME_STATE.UPGRADE) options.actif();
+  });
+  return button;
 }
 
 function getUpgradeChoices() {
@@ -5140,6 +5265,15 @@ function getUpgradeChoices() {
 
 function showUpgradeChoices(choices) {
   ui.completedWave.textContent = String(wave).padStart(2, '0');
+  // Les textes de l ecran binaire du Ranger sont reposes ici. Sans cela, un
+  // joueur qui a fini une vague en Ranger puis change de classe verrait
+  // "SOIGNEZ-VOUS OU PROGRESZ" au-dessus de ses modules, et un Ranger qui
+  // choisit "VOIR LES MODULES" garderait un titre qui ne parle plus de modules.
+  ui.upgradeOverline.textContent = 'ZONE SÉCURISÉE // ÉQUIPEMENT DISPONIBLE';
+  ui.upgradeTitle.innerHTML = 'AMÉLIOREZ VOTRE <em>ÉQUIPEMENT</em>';
+  ui.upgradeCountLabel.textContent = 'MODULE';
+  ui.upgradeCount.textContent = '01 / 01';
+  ui.upgradeFooter.textContent = 'CHOISISSEZ UN MODULE POUR POURSUIVRE L\'OPÉRATION';
   ui.upgradeOptions.innerHTML = '';
   choices.forEach((upgrade, index) => {
     const currentLevel = player.upgrades[upgrade.key];
@@ -6079,6 +6213,31 @@ function init() {
           && player.abilityCooldown <= 0,
         pretDash: player.classId === 'assassin' && player.dashCooldown <= 0
       };
+    };
+    // Etat des soins. Le Ranger doit avoir une regeneration nulle et pas de
+    // module de soin : c'est la regle nouvelle, et elle ne se voit pas depuis
+    // l'exterieur autrement qu'en terminant une vague et en lisant l'ecran.
+    window.__nexus.etatSoin = () => ({
+      classe: player.classId,
+      vie: player.health,
+      vieMax: player.maxHealth,
+      regen: player.regen,
+      modules: Object.assign({}, player.upgrades)
+    });
+    // Termine la vague en cours. L ecran de fin de vague n'apparait qu'apres
+    // avoir nettoye une vague entiere : sans ce raccourci, le test devrait
+    // jouer vingt minutes pour voir l'ecran qu'il veut verifier.
+    window.__nexus.terminerVague = () => {
+      if (state !== GAME_STATE.PLAYING) return state;
+      completeWave();
+      return state;
+    };
+    // Blesse le joueur a une fraction de sa vie maximale. Regenerer a partir
+    // du maximum ne prouverait rien : les deux etats seraient identiques, et
+    // n'importe quel jeu passerait le test.
+    window.__nexus.blesserJoueur = (fraction) => {
+      player.health = player.maxHealth * Math.max(0, Math.min(1, fraction));
+      return player.health;
     };
     // Saut de vague, pour cette meme capture. Sans lui, elle est impossible :
     // un joueur immobile ne termine pas la vague 1, or la vague 1 ne contient

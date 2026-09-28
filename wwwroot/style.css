@@ -655,6 +655,15 @@ button {
 .card-footer span { color: var(--card-color); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; }
 .upgrade-footer { margin: 22px 0 0; color: #5f747e; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em; }
 
+/* Ecran binaire du Ranger : deux cartes au lieu de trois, donc la grille
+   passe sur deux colonnes. Les pastilles de niveau n ont pas de sens ici,
+   ce ne sont pas des modules a monter, et laissees vides elles forment un
+   rectangle vide au pied de la carte. */
+.upgrade-options:has(> .ranger-choice) { grid-template-columns: repeat(2, 1fr); }
+.ranger-choice .level-pips { display: none; }
+.ranger-choice .card-footer { justify-content: flex-end; }
+.ranger-choice .card-visual { opacity: 0.95; }
+
 .shop-screen {
   z-index: 45;
   align-items: flex-start;

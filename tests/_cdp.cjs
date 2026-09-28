@@ -139,6 +139,22 @@ class Session {
     return resultat.result.value;
   }
 
+  // Ecrit dans le stockage AVANT que le jeu ne le lise, puis recharge la page.
+  //
+  // Ecrire localStorage apres coup ne suffit pas : au premier chargement le jeu
+  // lit un profil neuf, y ecrit ce qu il trouve, puis ce profil prime sur la
+  // cle isolee au chargement suivant. Le resultat est intermittent : ca
+  // depending du course entre la sauvegarde du jeu et notre ecriture. Injecter
+  // le script dans le document suivant supprime la course.
+  async preparerStockage(paires) {
+    const source = Object.entries(paires)
+      .map(([cle, valeur]) => `try { localStorage.setItem(${JSON.stringify(cle)}, `
+        + `${JSON.stringify(valeur)}); } catch (e) {}`)
+      .join('\n');
+    await this.envoyer('Page.addScriptToEvaluateOnNewDocument', { source });
+    await this.envoyer('Page.reload');
+  }
+
   // Attend une condition verifiee dans la page. C'est le vrai temps qui passe,
   // donc le jeu avance comme pour un joueur.
   async attendre(juste, delaiMax = 90000, pas = 120) {
@@ -232,7 +248,11 @@ async function ouvrir(page, racine, options = {}) {
   // annoncer l'URL de la page alors que le document est encore about:blank. On
   // se retrouve alors avec une page sans localStorage : le symptome est un
   // "Access is denied for this document" qui n'a rien a voir avec le test.
-  const attendue = `http://127.0.0.1:${portServeur}/${page}`;
+  // La query fait partie de l'URL attendue : le mode tactile du jeu se
+  // declenche par ?tactile=1, et une navigation qui l'oublierait fait croire
+  // au jeu qu'il tourne sur un ordinateur. Le symptome est trompeur : le jeu
+  // demarre tres bien, mais aucune commande tactile n existe.
+  const attendue = `http://127.0.0.1:${portServeur}/${page}${query ? '?' + query : ''}`;
   const limiteDoc = Date.now() + 15000;
   while (Date.now() < limiteDoc) {
     const href = await session.evaluer('location.href').catch(() => '');

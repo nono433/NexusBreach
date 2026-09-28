@@ -19,9 +19,14 @@ Les classes ne sont plus deux variantes du même jeu : **armes, capacités, amé
 
 - **100 PV**, vitesse 6,1. Plus résistant, mais dépend de la portée.
 - **8 armes à feu** : AR-9 PULSE (départ), SCATTER-7, NOVA-12, VECTOR-6, FROST-3, LANCE-01, PYRO-4, ARC-9 PLASMA.
-- **4 capacités** : NOVA PULSE (dégâts de zone), CRYO FIELD (ralentit 70 %), AEGIS SHIELD (−45 % de dégâts), OVERLOAD CORE (+50 % de dégâts, +60 % de cadence).
-- **7 améliorations** exclusives : Canon amplifié, Gâche rapide, Chargeur étendu, Recharge accélérée, Rayons perforants, Nanites réparateurs, Optique de précision.
+- **4 capacités** : NOVA PULSE (dégâts de zone), CRYO FIELD (ralentit 70 %), AEGIS SHIELD (−45 % de dégâts), OVERLOAD CORE (+50 % de dégâts, +60 % de cadence). **Aucune ne soigne.**
+- **6 améliorations** exclusives : Canon amplifié, Gâche rapide, Chargeur étendu, Recharge accélérée, Rayons perforants, Optique de précision. Les Nanites réparateurs ont été retirés : le Ranger ne peut plus se soigner.
 - **3 modules** d’atelier : Bobine pulsante, Déclencheur surcadencé, Chargeur tactique.
+- **Fin de vague : un choix, pas trois modules.** Soit il se régénère entièrement, soit il prend une amélioration. Les deux options s’excluent, et il n’y a plus aucun soin ailleurs.
+
+La vie du Ranger ne remonte donc jamais pendant une partie, sauf par ce choix. C’est un arbitrage : l’une rend les points de vie sans rien faire progresser, l’autre augmente la puissance sans rien rendre. L’option de soin disparaît d’ailleurs de l’écran quand la vie est déjà au maximum, pour ne pas laisser une carte morte à la place d’un module.
+
+L’Assassin n’est pas concerné : il garde ses trois cartes direct, et sa SANG-DÉCHIRÉ qui soigne sur élimination.
 
 ### ASSASSIN — corps à corps, mobilité, exécution
 
@@ -177,6 +182,7 @@ node tests\roles-ennemis.cjs     # 4 Chargeurs, 4 Tireurs, et l'IA respecte le r
 node tests\equilibrage-tir.mjs   # ce que le tir coûte, en temps de survie
 node tests\tir-distance.cjs      # ce qu'un projectile inflige, mesuré dans le jeu
 node tests\dash-assassin.cjs     # la capacité s'ajoute au dash, elle ne le remplace pas
+node tests\soin-ranger.cjs       # le Ranger n'a plus de soin, et son choix est réel
 node tests\pilote-cdp.cjs        # le pilote de navigateur est-il fiable ?
 node tests\capture-projectile.cjs # un projectile en vol, et sa taille en pixels
 node tests\capture-robots.cjs    # l'aperçu des robots est bien rendu
@@ -217,6 +223,7 @@ Les diagnostics dont ces deux tests ont besoin sont sur `window.__nexus`, qui es
 - `derniersDegats()` — les derniers coups encaissés, avec leur **origine** (`tir` ou `contact`) et un numéro d'ordre. Le numéro est indispensable : le journal est circulaire, donc sans lui un test qui le relit compte le même coup plusieurs fois.
 - `allerVague(n)` — sauter à une vague. Sans lui, la capture est impossible : un joueur immobile ne termine pas la vague 1, or la vague 1 ne contient que des Rôdeurs, et un Rôdeur ne tire pas.
 - `etatAction()` — l'état de la touche d'action de l'Assassin : les deux recharges et ce qui est prêt. Le HUD n'en montrait qu'une, il fallait donc pouvoir lire les deux.
+- `etatSoin()` et `terminerVague()` — l'état des soins et la fin de vague forcée, pour vérifier le nouveau choix du Ranger sans jouer vingt minutes. `blesserJoueur(fraction)` l'y met : sans blessure, se régénérer et ne rien faire seraient indiscernables.
 
 `hud.cjs` compare les blocs du HUD en **encre visible** (le texte) ou en boîte peinte (les boutons), jamais en boîte de conteneur : un élément de grille est étiré sur toute sa cellule, donc deux frères voisins se toucheraient toujours alors que leurs libellés sont bien séparés. Un contrôle négatif est documented dans le fichier : remettre les boutons d’action en bas doit faire échouer le test.
 
