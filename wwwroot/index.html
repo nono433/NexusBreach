@@ -292,6 +292,11 @@
         <button id="touch-ability" class="touch-button touch-button-ability" type="button" aria-label="Capacité">
           <span>CAP</span>
         </button>
+        <!-- DASH : Assassin uniquement. Le bouton est toujours dans le DOM, la
+             classe .touche-assassin le revele, comme le reste de la classe. -->
+        <button id="touch-dash" class="touch-button touch-button-dash" type="button" aria-label="Dash">
+          <span>DASH</span>
+        </button>
       </div>
       <button id="touch-pause" class="touch-button touch-button-pause" type="button" aria-label="Mettre en pause">
         <span>||</span>
@@ -371,6 +376,6 @@
   })();
   </script>
 
-  <script type="module" src="game.js?v=25"></script>
+  <script type="module" src="game.js?v=26"></script>
 </body>
 </html>

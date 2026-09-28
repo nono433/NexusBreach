@@ -201,7 +201,13 @@ async function ouvrir(page, racine, options = {}) {
   const limite = Date.now() + 40000;
   while (Date.now() < limite && !cible) {
     const pages = await pagesOuvertes(port);
-    cible = pages.find((p) => p.type === 'page' && p.webSocketDebuggerUrl);
+    // On ne prend PAS la premiere page venue : un navigateur d'un test
+    // precedent laisse parfois un onglet a propos d'une page vierge, et s'y
+    // connecter donne un document sans localStorage ni page a tester. Le
+    // symptome est un "Access is denied for this document" qui n'a rien a voir
+    // avec le code que l'on croyait tester.
+    cible = pages.find((p) => p.type === 'page' && p.webSocketDebuggerUrl
+      && !/^about:/.test(p.url) && p.url.includes(page));
     if (!cible) await attendre(250);
   }
   if (!cible) {
@@ -220,6 +226,22 @@ async function ouvrir(page, racine, options = {}) {
   const session = new Session(sock, processus, serveur, profil, port);
   await session.envoyer('Page.enable');
   await session.envoyer('Runtime.enable');
+
+  // On verifie que le documentconnecte est bien la page demandee. Un navigateur
+  // d'un test precedent peut laisser un onglet vierge, et /json/list peut
+  // annoncer l'URL de la page alors que le document est encore about:blank. On
+  // se retrouve alors avec une page sans localStorage : le symptome est un
+  // "Access is denied for this document" qui n'a rien a voir avec le test.
+  const attendue = `http://127.0.0.1:${portServeur}/${page}`;
+  const limiteDoc = Date.now() + 15000;
+  while (Date.now() < limiteDoc) {
+    const href = await session.evaluer('location.href').catch(() => '');
+    if (href && href.includes(page)) break;
+    if (Date.now() > limiteDoc - 14000) {
+      await session.envoyer('Page.navigate', { url: attendue });
+    }
+    await attendre(200);
+  }
   return session;
 }
 

@@ -36,7 +36,7 @@ Les classes ne sont plus deux variantes du même jeu : **armes, capacités, amé
 - **3 améliorations** : Exosquelette, Propulseurs, Stabilisateurs.
 - **2 modules** d’atelier : Noyau blindé, Réseau neural.
 
-Sans capacité, l’Assassin conserve son dash : **Espace** déclenche toujours quelque chose.
+L’Assassin garde son dash même sans capacité achetée : il est sur **F**, et le bouton **DASH** apparaît dès que la classe est active, capacité ou non.
 
 ## Jouer en ligne
 
@@ -68,7 +68,7 @@ Le mode tactile se détecte tout seul (pointeur grossier) : rien à cocher, et u
 | --- | --- |
 | **Glisser à gauche** (bas de l’écran) | Joystick flottant : il apparaît où tu poses le pouce. Il ne s’active que dans le coin gauche **et** le bas de l’écran, pour ne pas masquer le HUD. |
 | **Glisser à droite** | Viser, et rien d'autre. Le tir ne part que du bouton TIR : viser et tirer étaient fondus dans le même geste, donc toute correction de visée partait en rafale. |
-| **RECH / TIR / CAP** | Recharger, tir sans déplacer la vue, capacité. |
+| **RECH / TIR / CAP / DASH** | Recharger, tir sans déplacer la vue, capacité, dash. Le bouton DASH n'apparaît que chez l'Assassin. |
 | **❚❚** (haut droite) | Pause. Indispensable : sur mobile il n’y a pas de pointer lock, donc aucune touche `Échap`. |
 
 Le tir automatique pendant le glissement a été **retiré**. Viser et tirer étaient fondus dans le même geste : le joueur ne pouvait plus corriger sa visée sans déclencher une rafale, et les munitions s'écoulaient pendant qu'il cherchait où poser son doigt. Le bouton TIR est désormais le seul geste qui tire.
@@ -82,17 +82,22 @@ Quelques différences avec le PC, assumées :
 
 Si tu veux tester les commandes tactiles depuis un ordinateur, ajoute `?tactile=1` à l’adresse.
 
-### L'Assassin : deux ressources, une touche
+### L'Assassin : deux ressources, deux touches
 
-L'Assassin a un **dash** et une **capacité de classe**, tous deux sur Espace. Ils s'additionnent : la capacité part quand elle est prête, le dash prend le relais quand elle recharge, et il ne se passe rien seulement quand les deux sont en attente.
+L'Assassin a un **dash** et une **capacité de classe**, et ils ont chacun leur bouton. **Espace** ou le bouton **CAP** pour la capacité, **F** ou le bouton **DASH** pour le dash. Le bouton DASH n'existe que chez l'Assassin : le Ranger n'a pas de dash, et n'hériterait pas d'un bouton qui ne répond à rien.
 
-Ce n'était pas le cas. La touche appartenait entièrement à la capacité dès qu'une capacité était achetée, et pendant sa recharge l'appui ne faisait **rien**. Le dash devenait donc injoignable pendant 12 à 26 secondes d'affilée, selon la capacité. Le pire exemple : **PAS OMBRE** promet dans sa description « reset immédiat du dash et +50 % de dégâts pendant 6 secondes » — il remettait le compteur à zéro, puis bloquait la touche qui sert à s'en servir. La capacité faisait exactement l'inverse de ce qu'elle annonçait.
+Une touche qui fait deux choses n'en fait aucune correctement. C'était le cas : une seule touche pour deux ressources, et la capacité la prenait dès qu'elle était achetée. Pendant sa recharge, l'appui ne faisait **rien**, et le dash devenait injoignable pendant 12 à 26 secondes d'affilée. Le pire exemple est écrit dans sa propre description — **PAS OMBRE** promet « reset immédiat du dash et +50 % de dégâts pendant 6 secondes » : il remettait le compteur à zéro, puis bloquait la touche qui sert à s'en servir.
 
-Le HUD cachait le problème : le bandeau du bas n'affichait l'état du dash que lorsqu'aucune capacité n'était équipée, et l'indicateur « prêt » ne regardait que la capacité. Il fallait donc deviner quand le dash revenait.
+Le HUD cachait le problème : il n'affichait l'état du dash que lorsqu'aucune capacité n'était équipée, et l'indicateur « prêt » ne regardait que la capacité.
 
-`tests\dash-assassin.cjs` conduit une vraie partie en Assassin avec PAS OMBRE, presse Espace huit fois par de vrais événements clavier, et compte. Son contrôle négatif est dans le même passage : il compte les dash déclenchés *pendant que la capacité recharge*, le cas que l'ancien code refusait en bloc. Zéro de ces dash, et le test échoue. Remis en place tel quel, l'ancien code donne **0 dash et 7 refus injustifiés** sur 8 appuis ; le code actuel donne **6 dash et 0 refus**.
+`tests\dash-assassin.cjs` conduit une vraie partie — il débloque la classe et la capacité **par la boutique**, parce que la possession vit dans la sauvegarde et ne peut pas être forcée par le stockage — puis presse les deux touches par de vrais événements clavier. Son contrôle négatif est la séparation elle-même : si une touche déclenchait l'autre ressource, le test échouerait.
 
-### Les ennemis
+| | ESPACE | F |
+|---|---|---|
+| capacité déclenchée | 2 sur 5 | **0 sur 5** |
+| dash déclenché | **0 sur 5** | 4 sur 5 |
+
+Le zéro dans chaque case est le contrôle : c'est lui qui distingue « les deux touches marchent » de « une touche fait les deux ».
 
 Ce sont des **robots humanoïdes cubiques** : corps sombre, contours lumineux, visière cyan. Tout est construit en code, à partir de boîtes, sans aucun fichier 3D externe.
 
@@ -222,7 +227,8 @@ Sur ordinateur :
 - **ZQSD / WASD** — se déplacer
 - **Souris** — viser
 - **Clic gauche** — tirer (frapper aux sabres avec la classe Assassin)
-- **Espace** — capacité active / dash Assassin
+- **Espace** - capacité active (toutes classes)
+- **F** - dash Assassin (aucun effet pour le Ranger)
 - **R** — recharger
 - **Maj** — sprinter
 - **Échap** — pause

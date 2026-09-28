@@ -1294,6 +1294,23 @@ kbd { min-width: 17px; padding: 3px 4px; border: 1px solid rgba(130, 172, 183, 0
   font-size: 8px;
 }
 
+/* DASH : réservé à l'Assassin. Le bouton reste toujours dans le DOM, pour que
+   son gestionnaire d'événements soit posé dans tous les cas ; il est
+   simplement invisible pour le Ranger, qui n'a pas de dash. */
+.touch-button-dash {
+  width: 64px;
+  height: 64px;
+  display: none;
+  font-size: 8px;
+  border-color: rgba(177, 124, 255, 0.55);
+  background: rgba(30, 16, 48, 0.55);
+  color: #d9c6ff;
+}
+
+.touche-assassin .touch-button-dash {
+  display: grid;
+}
+
 .touch-button-pause {
   position: absolute;
   top: max(14px, env(safe-area-inset-top));

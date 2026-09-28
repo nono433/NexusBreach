@@ -64,6 +64,7 @@ const ui = {
   touchReload: document.querySelector('#touch-reload'),
   touchAbility: document.querySelector('#touch-ability'),
   touchPause: document.querySelector('#touch-pause'),
+  touchDash: document.querySelector('#touch-dash'),
   saveProgressButton: document.querySelector('#save-progress-button'),
   loadProgressButton: document.querySelector('#load-progress-button'),
   saveFileInput: document.querySelector('#save-file-input'),
@@ -4161,44 +4162,20 @@ function spawnAbilityEffect(radius, color) {
   ripples.push({ mesh: ring, life: 0.65, maxLife: 0.65, startScale: 0.15, endScale: 1.15 });
 }
 
-// Espace declenche deux choses chez l'Assassin : sa capacite de classe et son
-// dash. Elles ne doivent pas se remplacer l'une l'autre.
-//
-// Ce que faisait le code avant : des qu'une capacite etait achetee, la touche
-// appartenait a la capacite. Pendant sa recharge, l'appui ne déclenchait
-// RIEN, et le dash devenait injoignable pendant 12 a 26 secondes d'affilee. Le
-// PAS OMBRE, dont la description promet un dash libre pendant 6 s, remettait le
-// compteur a zero puis bloquait la touche qui sert a s'en servir : la capacite
-// faisait exactement l'inverse de ce qu'elle annoncait.
-//
-// La regle desormais : la capacite part quand elle est prete, le dash prend le
-// relais quand elle recharge, et il ne se passe rien seulement quand les deux
-// sont indisponibles. Les deux ressources s'additionnent, chacune garde son
-// propre temps de recharge.
+// Deux points d entree distincts chez l Assassin, et c est la demande : un
+// bouton pour le dash, un bouton pour la capacite. Une touche qui fait deux
+// choses n en fait aucune correctement : quand une des deux est indisponible,
+// le joueur ne sait pas laquelle, et l appui ne donne rien.
 function activateAbility() {
   if (state !== GAME_STATE.PLAYING) return;
-  const isAssassin = player.classId === 'assassin';
   const ability = getAbilityDefinition(player.abilityId);
-  const abilityUtilisable = Boolean(ability) && ability.classId === player.classId;
-  const dashPret = isAssassin && player.dashCooldown <= 0;
-
-  if (abilityUtilisable && player.abilityCooldown <= 0) {
-    // La capacite part, et le dash reste disponible immediat apres.
-  } else if (dashPret) {
-    activateDash();
-    return;
-  } else if (!abilityUtilisable) {
-    abilityMessage = "ACHÈTE UNE CAPACITÉ DANS L'ATELIER";
+  if (!ability || ability.classId !== player.classId) {
+    abilityMessage = "ACHETE UNE CAPACITE DANS L ATELIER";
     abilityMessageTimer = 1.8;
     return;
-  } else {
-    // Les deux sont en recharge : on dit laquelle, pour eviter un appui
-    // muet que le joueur interpretait comme un bug.
-    const capacite = player.abilityCooldown.toFixed(1);
-    const dash = isAssassin ? player.dashCooldown.toFixed(1) : null;
-    abilityMessage = isAssassin
-      ? `CAPACITÉ ${capacite}s // DASH ${dash}s`
-      : `CAPACITÉ // RECHARGE ${capacite}s`;
+  }
+  if (player.abilityCooldown > 0) {
+    abilityMessage = "CAPACITE // RECHARGE " + player.abilityCooldown.toFixed(1) + "s";
     abilityMessageTimer = 0.8;
     return;
   }
@@ -4477,7 +4454,13 @@ function applyDashDamage(fromX, fromZ) {
 }
 
 function activateDash() {
-  if (state !== GAME_STATE.PLAYING || player.classId !== 'assassin' || player.dashCooldown > 0) return;
+  if (state !== GAME_STATE.PLAYING || player.classId !== 'assassin' || player.dashCooldown > 0) {
+    if (player.classId === 'assassin' && player.dashCooldown > 0) {
+      abilityMessage = `DASH // RECHARGE ${player.dashCooldown.toFixed(1)}s`;
+      abilityMessageTimer = 0.6;
+    }
+    return;
+  }
   const forwardInput = (keys.has('KeyW') || keys.has('KeyZ') || keys.has('ArrowUp') ? 1 : 0)
     - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
   const rightInput = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0)
@@ -5383,25 +5366,22 @@ function updateHUD() {
     hudCache.weaponStats = weaponStatsText;
   }
 
-  // L'Assassin a une capacite de classe ET un dash, tous deux sur Espace. Le
-  // HUD doit montrer les deux : sinon le joueur voit "ESPACE // PRET" pendant
-  // que son dash recharge, et croit que l affichage est faux.
+  // L'Assassin a deux ressources et deux touches : ESPACE pour la capacite, F
+  // pour le dash. Le HUD nomme les deux, sinon le joueur ne sait pas laquelle
+  // appuyer ni laquelle il lui reste.
   const ability = getAbilityDefinition(player.abilityId);
   const hasDash = isAssassin;
   const dashPret = hasDash && player.dashCooldown <= 0;
-  const dashTexte = hasDash
-    ? `DASH ${player.dashCooldown > 0 ? player.dashCooldown.toFixed(1) + 's' : 'PRÊT'}`
-    : '';
   const abilityStatus = abilityMessageTimer > 0
     ? abilityMessage
     : ability
       ? player.abilityCooldown > 0
-        ? `RECHARGE ${player.abilityCooldown.toFixed(1)}s // ${dashTexte}`
-        : `ESPACE // PRÊT${hasDash ? ' // DASH ' + player.dashCooldown.toFixed(1) + 's' : ''}`
+        ? `RECHARGE // ${player.abilityCooldown.toFixed(1)}s`
+        : 'ESPACE // PRÊT'
       : hasDash
         ? player.dashCooldown > 0
           ? `DASH // ${player.dashCooldown.toFixed(1)}s`
-          : 'ESPACE // DASH PRÊT'
+          : 'F // DASH PRÊT'
         : "ÉQUIPE UNE CAPACITÉ DANS L'ATELIER";
   const abilityText = ability ? ability.name : hasDash ? 'DASH OMBRE' : 'AUCUNE';
   if (hudCache.abilityName !== abilityText) {
@@ -5412,18 +5392,20 @@ function updateHUD() {
     ui.abilityStatus.textContent = abilityStatus;
     hudCache.abilityStatus = abilityStatus;
   }
-  // La touche est prete des qu UNE des deux ressources l'est : c est
-  // maintenant la regle reelle, l ancien test ne regardait que la capacite et
-  // affirmait donc "pret" pendant que le dash etait indisponible.
-  const abilityReady = ability ? player.abilityCooldown <= 0 || dashPret : dashPret;
-  const abilityCooling = ability ? player.abilityCooldown > 0 && !dashPret : !dashPret && hasDash;
+  // Le voyant du bloc capacite ne parle QUE de la capacite. Le dash a son propre
+  // affichage, dans le bandeau du bas : les deux sont separes, donc leurs
+  // temoins doivent l etre aussi.
+  const abilityReady = ability ? player.abilityCooldown <= 0 : dashPret;
+  const abilityCooling = ability ? player.abilityCooldown > 0 : hasDash && !dashPret;
   ui.abilityReadout.classList.toggle('ready', abilityReady);
   ui.abilityReadout.classList.toggle('cooling', abilityCooling);
   // Le <span> existe une seule fois dans le HUD : on le resout une fois au
   // lieu de faire un querySelector a chaque tick.
   if (!ui.abilityHeading) ui.abilityHeading = ui.abilityReadout.querySelector('span');
   if (ui.abilityHeading) {
-    const headingText = ability ? 'CAPACITÉ // ESPACE' : 'DASH // ESPACE';
+    const headingText = hasDash
+      ? (ability ? 'CAPACITÉ // ESPACE   DASH // F' : 'DASH // F')
+      : 'CAPACITÉ // ESPACE';
     if (hudCache.abilityHeading !== headingText) {
       ui.abilityHeading.textContent = headingText;
       hudCache.abilityHeading = headingText;
@@ -5605,6 +5587,10 @@ let touchLayerPlaying = null;
 
 function majCoucheTactile() {
   if (!IS_TOUCH) return;
+  // Le bouton DASH n'existe que chez l'Assassin. La classe suit l'equipement
+  // courant, pas la classe du joueur : le Ranger ne doit pas heriter d'un bouton
+  // qui ne repondrait a rien.
+  document.documentElement.classList.toggle('touche-assassin', player.classId === 'assassin');
   const actif = state === GAME_STATE.PLAYING || state === GAME_STATE.PAUSED;
   if (actif === touchLayerPlaying) return;
   touchLayerPlaying = actif;
@@ -5843,6 +5829,14 @@ function initTouchControls() {
   bindHoldButton(ui.touchFire, () => { TOUCH.fireButton = true; }, () => { TOUCH.fireButton = false; });
   bindHoldButton(ui.touchReload, () => { if (state === GAME_STATE.PLAYING) startReload(); });
   bindHoldButton(ui.touchAbility, () => { if (state === GAME_STATE.PLAYING) activateAbility(); });
+  // DASH : bouton tactile propre a l Assassin, comme la touche F sur
+  // ordinateur. C est ce qui manquait : sans lui, la capacite et le dash se
+  // partageaient le bouton CAP.
+  if (ui.touchDash) {
+    bindHoldButton(ui.touchDash, () => {
+      if (state === GAME_STATE.PLAYING) activateDash();
+    });
+  }
 
   if (ui.touchPause) {
     // pointerdown et non click : sur tactile la reponse est plus immediate,
@@ -5936,7 +5930,7 @@ function initEvents() {
       closeShop();
       return;
     }
-    const gameplayKey = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyQ', 'KeyR', 'Space', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code);
+    const gameplayKey = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyZ', 'KeyQ', 'KeyR', 'KeyF', 'Space', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code);
     if (gameplayKey && state === GAME_STATE.PLAYING) event.preventDefault();
     if (event.code === 'KeyM' && !event.repeat) {
       audio.setEnabled(!soundEnabled);
@@ -5946,6 +5940,12 @@ function initEvents() {
     if (event.code === 'Space' && !event.repeat && state === GAME_STATE.PLAYING) {
       event.preventDefault();
       activateAbility();
+    }
+    // DASH : touche a part, Assassin uniquement. Elle n existe pas pour le
+    // Ranger, qui n a pas de dash, et le code le refuse explicitement.
+    if (event.code === 'KeyF' && !event.repeat && state === GAME_STATE.PLAYING) {
+      event.preventDefault();
+      activateDash();
     }
     if (state === GAME_STATE.PLAYING) keys.add(event.code);
   });

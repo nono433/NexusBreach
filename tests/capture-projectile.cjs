@@ -68,13 +68,40 @@ const SEUIL = 6;
 
     // Sans ce saut, aucun projectile n existe jamais : la vague 1 ne contient
     // que des Radeurs, et un Radeur ne tire pas.
-    const vague = await session.evaluer(`window.__nexus.allerVague(${VAGUE})`);
-    console.log(`  vague atteinte : ${vague}`);
-
-    const trouve = await session.attendre(
-      "(() => { const v = window.__nexus.sonderProjectiles().filter(p => p.devant);"
-      + " return v.length ? v : null; })()", 120000);
-    if (!trouve) throw new Error(`aucun projectile en vol, ni a la vague ${VAGUE} ni apres`);
+    //
+    // Le joueur ne bouge pas et ne tire pas : il meurt, et c est normal. La
+    // capture ne doit pas dependre de sa chance. On relance donc la partie et
+    // on recommence, jusqu a voir un projectile ou epuiser le temps.
+    const ECRAN_FIN = "document.getElementById('gameover-screen').classList.contains('active')";
+    const limite = Date.now() + 180000;
+    let trouve = null;
+    let tentatives = 0;
+    let morts = 0;
+    while (Date.now() < limite && !trouve) {
+      if (tentatives > 0) {
+        await session.evaluer("document.getElementById('retry-button').click(); true");
+        await attendre(600);
+      }
+      const vague = await session.evaluer(`window.__nexus.allerVague(${VAGUE})`);
+      tentatives += 1;
+      console.log(`  tentative ${tentatives} : vague ${vague}`
+        + `${morts ? ' (joueur mort ' + morts + ' fois avant)' : ''}`);
+      trouve = await session.attendre(
+        `(() => {
+          if (${ECRAN_FIN}) return 'mort';
+          const v = window.__nexus.sonderProjectiles().filter(p => p.devant);
+          return v.length ? v : null;
+        })()`, 40000, 90);
+      if (trouve === 'mort') {
+        trouve = null;
+        morts += 1;
+      }
+    }
+    if (!trouve) {
+      throw new Error(`aucun projectile en vol apres ${tentatives} tentatives`
+        + ` (${morts} morts du joueur)`);
+    }
+    console.log(`  projectile vu a la tentative ${tentatives}`);
 
     const vus = trouve.slice(0, 8);
     console.log('  projectiles en vol :');
