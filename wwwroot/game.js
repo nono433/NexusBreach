@@ -77,7 +77,6 @@ const ui = {
   classDescription: document.querySelector('#class-description'),
   classButtons: Array.from(document.querySelectorAll('[data-class-id]')),
   assassinClassStatus: document.querySelector('#assassin-class-status'),
-  tankClassStatus: document.querySelector('#tank-class-status'),
   shopClasses: document.querySelector('#shop-classes'),
   abilityHint: document.querySelector('#ability-hint'),
   soundButton: document.querySelector('#sound-button')
@@ -95,9 +94,6 @@ const CONFIG = {
   baseReload: 1.45,
   interactionRange: 70
 };
-
-const SAVE_VERSION = 2;
-const SUPPORTED_SAVE_VERSIONS = new Set([1, SAVE_VERSION]);
 
 // Appareil tactile : on se base sur le pointeur principal et non sur
 // maxTouchPoints, sinon un portable avec ecran tactile (pointeur fin)
@@ -275,39 +271,19 @@ const PLAYER_CLASSES = Object.freeze({
     name: 'Assassin',
     short: 'ASSASSIN',
     tagline: 'MÉLÉE · MOBILITÉ · EXÉCUTION',
-    description: 'Sabres et dash. 85 PV, plus rapide, et des frappes qui tuent plus vite.',
+    description: 'Sabres et dash. Moins de vie, mais plus rapide, et des frappes qui tuent plus vite.',
     price: 2500,
     color: '#b17cff',
     stats: {
-      health: 85,
-      speed: 7.8,
-      // Repli pour une arme de mêlée qui ne déclarerait pas ses chiffres.
-      // Ces valeurs sont celles de LAMES // JUMELLES, l'arme de départ :
-      // laisser l'ancien 46 / 2,7 ici rendait le repli faux.
-      slashDamage: 38,
-      slashRate: 3.1,
+      health: 84,
+      speed: 7.3,
+      // Dégâts par frappe et cadence de base, avant améliorations.
+      slashDamage: 46,
+      slashRate: 2.7,
       slashRange: 3.9,
       slashTargets: 2
     },
     icon: '<path d="m13 49 9-4 29-29-5-5-29 29-4 9Z"/><path d="m40 16 8-8 8 8-8 8M9 54l12-4M45 45l10 10"/><path d="m18 27 8 8"/>'
-  },
-  tank: {
-    id: 'tank',
-    name: 'Tank',
-    short: 'TANK',
-    tagline: 'BLINDAGE · RÉSISTANCE · TIR LOURD',
-    description: '120 PV, vitesse réduite et arme de siège. Il encaisse et tient la ligne.',
-    price: 3500,
-    color: '#ffb347',
-    stats: {
-      health: 120,
-      speed: 4.8,
-      slashDamage: 0,
-      slashRate: 0,
-      slashRange: 0,
-      slashTargets: 0
-    },
-    icon: '<path d="M32 6 53 14v15c0 13-9 24-21 30C20 53 11 42 11 29V14l21-8Z"/><path d="M32 17v30M20 25l12 8 12-8M20 41l12-8 12 8"/><path d="M8 20h8M48 20h8M8 44h8M48 44h8"/>'
   }
 });
 
@@ -671,24 +647,6 @@ const UPGRADE_DEFINITIONS = {
     max: 4,
     icon: '<path d="M32 55S8 42 8 23C8 12 22 7 32 20 42 7 56 12 56 23c0 19-24 32-24 32Z"/><path d="M21 29h8l3-6 4 13 3-7h8"/>'
   },
-  tankDamage: {
-    classId: 'tank',
-    name: 'Obus calibré',
-    description: '+12 % de dégâts de tir par niveau.',
-    short: 'DÉGÂTS',
-    color: '#ff6b2c',
-    max: 6,
-    icon: '<path d="M32 6v52M15 17l17 15 17-15M18 48l14-16 14 16"/><circle cx="32" cy="32" r="8"/>'
-  },
-  tankTrigger: {
-    classId: 'tank',
-    name: 'Gâche lourde',
-    description: '+8 % de cadence de tir par niveau.',
-    short: 'CADENCE',
-    color: '#00f5ff',
-    max: 5,
-    icon: '<path d="M36 7 17 29h13l-5 19 22-27H33l3-14Z"/><path d="M8 13h8M6 21h7M8 29h8M49 48h7M48 40h6"/>'
-  },
   shadowExecution: {
     classId: 'assassin',
     name: 'Sentence',
@@ -938,60 +896,6 @@ const WEAPON_DEFINITIONS = {
     icon: '<circle cx="32" cy="32" r="10"/><path d="M32 6v10M32 48v10M6 32h10M48 32h10M13 13l8 8M43 43l8 8M51 13l-8 8M21 43l-8 8"/><path d="m26 32 6-10 6 10-6 10Z"/>'
   },
 
-  // --- Armurerie du Tank ---------------------------------------------------
-  bulwark: {
-    id: 'bulwark',
-    classId: 'tank',
-    fireMode: 'ray',
-    name: 'BULWARK // ANVIL',
-    short: 'BULWARK',
-    description: 'Fusil de siège lent. Chaque projectile encaisse une vague entière.',
-    price: 0,
-    damage: 34,
-    fireRate: 4.4,
-    magazine: 40,
-    reload: 2.1,
-    pellets: 1,
-    spread: 0.012,
-    pierce: 1,
-    range: 78,
-    headshotMultiplier: 1.6,
-    special: 'TRAVERSÉE',
-    color: '#ffb347',
-    energyColor: 0xffb347,
-    accentColor: 0x5ca8ff,
-    tracerColor: 0xffe0a3,
-    visualScale: 1.12,
-    icon: '<path d="M8 32h34l12-8v-6L42 26H8l-5-8 5-8 5 8Z"/><path d="M18 26v12M28 26v12M38 26v12M50 18h6M50 46h6"/><path d="M12 48h30v6H12z"/>'
-  },
-  siege: {
-    id: 'siege',
-    classId: 'tank',
-    fireMode: 'ray',
-    name: 'SIEGE // BREAKER',
-    short: 'SIEGE',
-    description: 'Canon à action lente. L’impact ionise toute la zone touchée.',
-    price: 1800,
-    damage: 88,
-    fireRate: 1.5,
-    magazine: 8,
-    reload: 3,
-    pellets: 1,
-    spread: 0.004,
-    pierce: 2,
-    range: 92,
-    headshotMultiplier: 1.8,
-    explosionRadius: 5.2,
-    explosionDamage: 74,
-    special: 'BRISE-FORT',
-    color: '#ff6b2c',
-    energyColor: 0xff6b2c,
-    accentColor: 0xffd166,
-    tracerColor: 0xffb05c,
-    visualScale: 1.2,
-    icon: '<path d="M7 32h40l11-8v-6L47 26H7l-5-8 5-8 5 8Z"/><path d="M17 25v14M27 25v14M37 25v14M50 16h6v32h-6"/><path d="M12 48h30v7H12z"/>'
-  },
-
   // --- Armurerie de l'Assassin -------------------------------------------
   twinSabers: {
     id: 'twinSabers',
@@ -1001,8 +905,8 @@ const WEAPON_DEFINITIONS = {
     short: 'JUMELLES',
     description: 'Deux sabres, deux cibles. L’arme de base de l’Assassin.',
     price: 0,
-    damage: 38,
-    fireRate: 3.1,
+    damage: 48,
+    fireRate: 2.7,
     slashTargets: 2,
     slashArc: 0.34,
     slashRange: 3.9,
@@ -1110,78 +1014,6 @@ const WEAPON_DEFINITIONS = {
     tracerColor: 0xc2d0ff,
     visualScale: 1.05,
     icon: '<path d="M32 7 18 25l14 7-14 7 14 7-14 7 14 7 14-7-14-7 14-7-14-7 14-7-14-7Z"/><path d="m10 50 6-3 20-20-4-4-20 20-2 7Z"/><path d="M9 15 3 9M55 15l6-6M9 49l-6 6"/>'
-  },
-  bloodFangs: {
-    id: 'bloodFangs',
-    classId: 'assassin',
-    fireMode: 'slash',
-    name: 'SANG // CROCS',
-    short: 'SANG',
-    description: 'Frappe lourde : exécution accrue et soin à chaque élimination.',
-    price: 2200,
-    damage: 58,
-    fireRate: 2.15,
-    slashTargets: 2,
-    slashArc: 0.42,
-    slashRange: 3.8,
-    slashVisual: 1.55,
-    range: 3.8,
-    killHeal: 8,
-    executionBonus: 1.35,
-    special: 'EXÉCUTION + SOIN',
-    color: '#ff3158',
-    energyColor: 0xff3158,
-    accentColor: 0xffb347,
-    tracerColor: 0xff8095,
-    visualScale: 1.04,
-    icon: '<path d="M14 50 8 42l17-5 18-18 5 5-18 18-5 17Z"/><path d="m39 19 8-8 8 8-8 8M10 55l12-5M47 46l8 8"/><path d="m27 26 7 7"/>'
-  },
-  stormFangs: {
-    id: 'stormFangs',
-    classId: 'assassin',
-    fireMode: 'slash',
-    name: 'TEMPÊTE // ÉCLAIR',
-    short: 'TEMPÊTE',
-    description: 'Cadence très élevée et frappe large : trois cibles à la fois.',
-    price: 3600,
-    damage: 27,
-    fireRate: 4.6,
-    slashTargets: 3,
-    slashArc: 0.55,
-    slashRange: 4.1,
-    slashVisual: 1.25,
-    range: 4.1,
-    special: 'TEMPÊTE',
-    color: '#72d8ff',
-    energyColor: 0x72d8ff,
-    accentColor: 0xb17cff,
-    tracerColor: 0xd9f6ff,
-    visualScale: 0.98,
-    icon: '<path d="m13 49 9-4 29-29-5-5-29 29-4 9Z"/><path d="m40 16 8-8 8 8-8 8M9 54l12-4M45 45l10 10"/><path d="m18 27 8 8M28 20l5 5M22 34l5 5"/>'
-  },
-  executioner: {
-    id: 'executioner',
-    classId: 'assassin',
-    fireMode: 'slash',
-    name: 'EXEC // FAUX',
-    short: 'EXEC',
-    description: 'Faux lattices : une frappe lente, mais une exécution devastatrice.',
-    price: 5200,
-    damage: 78,
-    fireRate: 1.55,
-    slashTargets: 2,
-    slashArc: 0.24,
-    slashRange: 4.5,
-    slashVisual: 1.9,
-    range: 4.5,
-    executionBonus: 1.6,
-    special: 'EXÉCUTION',
-    color: '#ffb347',
-    energyColor: 0xffb347,
-    accentColor: 0xff3158,
-    tracerColor: 0xffe0a3,
-    visualScale: 1.16,
-    icon: '<path d="m8 54 8-5 30-30-5-5-30 30-3 10Z"/><path d="m40 15 9-9 9 9-9 9M10 49l10 5M47 46l9 9"/><path d="M32 22v20M22 32h20"/>'
   }
 };
 
@@ -1534,7 +1366,7 @@ let equippedAbility = readEquippedAbility();
 // une arme de l'autre classe, et l'ecran de chargement restait bloque en
 // silence. Elle n'etait atteinte par aucun test, tous demarrant sur une
 // sauvegarde vierge.
-const CLASS_DEFAULT_WEAPON = Object.freeze({ ranger: 'pulse', assassin: 'twinSabers', tank: 'bulwark' });
+const CLASS_DEFAULT_WEAPON = Object.freeze({ ranger: 'pulse', assassin: 'twinSabers' });
 
 // Reconciliation apres chargement : une sauvegarde d'avant le split par
 // classe peut porter une arme ou une capacite de l'autre classe. On les
@@ -1826,11 +1658,10 @@ function readEquippedWeapon() {
 }
 
 function readOwnedClasses() {
-  const classes = { ranger: true, assassin: false, tank: false };
+  const classes = { ranger: true, assassin: false };
   try {
     const saved = JSON.parse(readStorage(STORAGE_KEYS.classes, '{}'));
     if (saved?.assassin === true) classes.assassin = true;
-    if (saved?.tank === true) classes.tank = true;
   } catch {
     // Un inventaire de classes corrompu conserve le Ranger.
   }
@@ -1879,14 +1710,14 @@ function saveProfile() {
   writeStorage(STORAGE_KEYS.abilities, JSON.stringify(ownedAbilities));
   writeStorage(STORAGE_KEYS.equippedAbility, equippedAbility);
   writeStorage(STORAGE_KEYS.map, String(currentMapIndex));
-  writeStorage(STORAGE_KEYS.saveVersion, String(SAVE_VERSION));
+  writeStorage(STORAGE_KEYS.saveVersion, '1');
 }
 
 function createProfileBackup() {
   saveProfile();
   return {
     game: 'Nexus Breach',
-    saveVersion: SAVE_VERSION,
+    saveVersion: 1,
     savedAt: new Date().toISOString(),
     progression: {
       bestScore,
@@ -1904,7 +1735,7 @@ function createProfileBackup() {
 }
 
 function sanitizeImportedProfile(data) {
-  if (!data || data.game !== 'Nexus Breach' || !SUPPORTED_SAVE_VERSIONS.has(Number(data.saveVersion)) || !data.progression) {
+  if (!data || data.game !== 'Nexus Breach' || data.saveVersion !== 1 || !data.progression) {
     throw new Error('Ce fichier n’est pas une sauvegarde valide de Nexus Breach.');
   }
 
@@ -1915,9 +1746,9 @@ function sanitizeImportedProfile(data) {
     if (Number.isInteger(level) && level >= 0) equipment[item.id] = Math.min(level, item.maxLevel);
   });
 
-  const weapons = {};
+  const weapons = { pulse: true };
   Object.keys(WEAPON_DEFINITIONS).forEach((id) => {
-    if (WEAPON_DEFINITIONS[id].price === 0 || progression.ownedWeapons?.[id] === true) weapons[id] = true;
+    if (id === 'pulse' || progression.ownedWeapons?.[id] === true) weapons[id] = true;
   });
 
   const abilities = {};
@@ -1925,20 +1756,16 @@ function sanitizeImportedProfile(data) {
     if (progression.ownedAbilities?.[id] === true) abilities[id] = true;
   });
 
-  const classes = {
-    ranger: true,
-    assassin: progression.ownedClasses?.assassin === true,
-    tank: progression.ownedClasses?.tank === true
-  };
-  const importedClass = PLAYER_CLASSES[progression.equippedClass] && classes[progression.equippedClass]
-    ? progression.equippedClass
-    : 'ranger';
   const importedWeapon = WEAPON_DEFINITIONS[progression.equippedWeapon] && weapons[progression.equippedWeapon]
     ? progression.equippedWeapon
-    : CLASS_DEFAULT_WEAPON[importedClass] || CLASS_DEFAULT_WEAPON.ranger;
+    : 'pulse';
   const importedAbility = ABILITY_DEFINITIONS[progression.equippedAbility] && abilities[progression.equippedAbility]
     ? progression.equippedAbility
     : '';
+  const classes = { ranger: true, assassin: progression.ownedClasses?.assassin === true };
+  const importedClass = PLAYER_CLASSES[progression.equippedClass] && classes[progression.equippedClass]
+    ? progression.equippedClass
+    : 'ranger';
   const importedMap = Number(progression.currentMapIndex);
 
   return {
@@ -2036,30 +1863,16 @@ function updateClassUI() {
     button.classList.toggle('active', id === equippedClass);
     button.classList.toggle('locked', !unlocked);
     button.setAttribute('aria-disabled', String(!unlocked));
-    const status = id === 'assassin' ? ui.assassinClassStatus : id === 'tank' ? ui.tankClassStatus : null;
-    if (status) {
-      const classDefinition = PLAYER_CLASSES[id];
-      status.textContent = id === 'ranger'
-        ? 'POLYVALENT'
-        : unlocked
-          ? (equippedClass === id ? 'ÉQUIPÉE' : 'POSSÉDÉE')
-          : `${formatCredits(classDefinition.price)} CR`;
+    if (id === 'assassin' && ui.assassinClassStatus) {
+      ui.assassinClassStatus.textContent = unlocked ? (equippedClass === id ? 'ÉQUIPÉE' : 'POSSÉDÉE') : `${formatCredits(PLAYER_CLASSES.assassin.price)} CR`;
     }
   });
   if (ui.abilityHint) {
     // L'Assassin n'a un dash nu que tant qu'il n'a achete aucune capacite.
     const label = equippedAbility && ABILITY_DEFINITIONS[equippedAbility]?.classId === equippedClass
       ? 'CAPACITÉ'
-      : equippedClass === 'assassin'
-        ? 'DASH'
-        : equippedClass === 'tank'
-          ? 'BLINDAGE PASSIF'
-          : 'CAPACITÉ';
-    // Le Tank n'a aucune capacité active : afficher ESPACE devant son nom
-    // serait un bouton mort. Le HUD montre clairement son passif.
-    ui.abilityHint.innerHTML = equippedClass === 'tank'
-      ? `<kbd>—</kbd> ${label}`
-      : `<kbd>ESPACE</kbd> ${label}`;
+      : 'DASH';
+    ui.abilityHint.innerHTML = `<kbd>ESPACE</kbd> ${label}`;
   }
 }
 
@@ -2081,8 +1894,7 @@ function selectPlayerClass(id) {
   }
   if (!ownsClass(id)) {
     openShop();
-    const classDefinition = getPlayerClassDefinition(id);
-    showSaveStatus(`DÉBLOQUEZ ${classDefinition.name.toUpperCase()} POUR ${formatCredits(classDefinition.price)} CR DANS L’ATELIER`, 'error');
+    showSaveStatus('DÉBLOQUEZ L’ASSASSIN POUR 2 500 CR DANS L’ATELIER', 'error');
     return;
   }
   equippedClass = id;
@@ -2284,13 +2096,6 @@ function renderShop() {
       ? `<span>DEGÂTS/S <b>${Math.round(weapon.damage * weapon.fireRate * (weapon.slashTargets * 0.75 + 0.25))}</b></span>`
       : `<span>DPS <b>${Math.round(weapon.damage * weapon.fireRate * weapon.pellets * (weapon.pierce + 1) * 0.6)}</b></span>`;
     const accuracyStat = isSlash ? '' : `<span>PRÉCISION <b>${Math.round(Math.max(0, 100 - weapon.spread * 450))}%</b></span>`;
-    // Les Armes qui grantent une exécution ou un soin par élimination doivent
-    // l'annoncer dans la carte : sans cela, SANG // CROCS et EXEC // FAUX
-    // ressemblaient à de simples variations de dégâts.
-    const executionStat = weapon.executionBonus > 1
-      ? `<span>EXÉCUTION <b>x${weapon.executionBonus.toFixed(2)}</b></span>`
-      : '';
-    const killHealStat = weapon.killHeal > 0 ? `<span>SOIN/KILL <b>+${weapon.killHeal} PV</b></span>` : '';
     const stats = [
       damageStat,
       dpsStat,
@@ -2303,8 +2108,6 @@ function renderShop() {
       targetStat,
       projectileStat,
       pierceStat,
-      executionStat,
-      killHealStat,
       `<span>EFFET <b>${special}</b></span>`
     ].filter(Boolean).join('');
 
@@ -2405,7 +2208,7 @@ function renderShop() {
   const classAbilities = Object.values(ABILITY_DEFINITIONS).filter((ability) => ability.classId === equippedClass);
   const ownedWeaponsCount = classWeapons.filter((weapon) => ownsWeapon(weapon.id)).length;
   const ownedAbilitiesCount = classAbilities.filter((ability) => ownsAbility(ability.id)).length;
-  ui.shopOwnedCount.textContent = `${getPlayerClassDefinition().short} // ${ownedWeaponsCount} / ${classWeapons.length} ARMES // ${ownedAbilitiesCount} / ${classAbilities.length} CAPACITÉS // ${installedCount} / ${visibleEquipment.length} MODULES`;
+  ui.shopOwnedCount.textContent = `${equippedClass === 'ranger' ? 'RANGER' : 'ASSASSIN'} // ${ownedWeaponsCount} / ${classWeapons.length} ARMES // ${ownedAbilitiesCount} / ${classAbilities.length} CAPACITÉS // ${installedCount} / ${visibleEquipment.length} MODULES`;
   // Chaque carte est un <button>, et Chrome ne traite pas leur contenu comme
   // une vraie colonne flex : le libelle du bas se superposait aux dernieres
   // lignes de la description. On encapsule le contenu dans un div.
@@ -2448,7 +2251,6 @@ function buyWeapon(id) {
   ownedWeapons[id] = true;
   equippedWeapon = id;
   player.weaponId = id;
-  appliquerChargeurArme();
   saveProfile();
   updateCreditsUI();
   renderShop();
@@ -2461,43 +2263,10 @@ function equipWeapon(id) {
   if (WEAPON_DEFINITIONS[id]?.classId !== equippedClass) return;
   equippedWeapon = id;
   player.weaponId = id;
-  appliquerChargeurArme();
   saveProfile();
   renderShop();
   updateHUD();
   audio.purchase();
-}
-
-// Changer d'arme en cours de partie ne changeait que l'identifiant : les
-// statistiques derivees restaient celles de l'arme precedente jusqu'a la
-// partie suivante. C'etait invisible pour les armes a distance, dont les
-// valeurs ne changeaient presque rien d'une carte a l'autre, mais faux pour
-// les sabres : la TEMPETE (3 cibles) continuait d'afficher 2, et la portee
-// comme la recharge restaient celles de l'arme precedemment equipee.
-function appliquerChargeurArme() {
-  const weapon = getWeaponDefinition(player.weaponId);
-  const classStats = getPlayerClassDefinition().stats;
-  const isSlash = weapon.fireMode === 'slash';
-  // Meme ordre de resolution que resetStats : la definition de l'arme gagne,
-  // les statistiques de classe ne servent que de repli. L'inverse annulait le
-  // choix du joueur : la TEMPETE (27 degats, 4,6 coups/s) s'affichait avec les
-  // chiffres de base de la classe.
-  player.baseDamage = isSlash ? (weapon.damage || classStats.slashDamage) : weapon.damage;
-  player.baseFireRate = isSlash ? (weapon.fireRate || classStats.slashRate) : weapon.fireRate;
-  player.baseWeaponRange = isSlash ? (weapon.slashRange || weapon.range || classStats.slashRange) : weapon.range;
-  player.weaponRange = player.baseWeaponRange;
-  player.baseMagazine = isSlash ? 0 : weapon.magazine;
-  player.baseReloadTime = isSlash ? 0 : weapon.reload;
-  player.basePierce = isSlash ? 0 : (weapon.pierce || 0);
-  player.weaponPellets = isSlash ? 0 : (weapon.pellets || 1);
-  player.weaponSpread = isSlash ? 0 : (weapon.spread || 0);
-  player.slashArc = isSlash ? (weapon.slashArc || 0.34) : 0;
-  player.slashTargets = isSlash ? (weapon.slashTargets || classStats.slashTargets || 1) : 0;
-  player.dashDamage = isSlash ? (weapon.dashDamage || 0) : 0;
-  applyUpgradeStats();
-  player.ammo = player.magazineSize;
-  player.reloadRemaining = 0;
-  player.fireCooldown = 0;
 }
 
 function buyAbility(id) {
@@ -2606,8 +2375,9 @@ const UPGRADE_VALUES = {
 function applyUpgradeStats() {
   const permanent = getPermanentStats();
   const upgrades = player.upgrades;
-  const damageKey = player.classId === 'assassin' ? 'shadowDamage' : player.classId === 'tank' ? 'tankDamage' : 'damage';
-  const rateKey = player.classId === 'assassin' ? 'shadowFlurry' : player.classId === 'tank' ? 'tankTrigger' : 'fireRate';
+  const isAssassin = player.classId === 'assassin';
+  const damageKey = isAssassin ? 'shadowDamage' : 'damage';
+  const rateKey = isAssassin ? 'shadowFlurry' : 'fireRate';
 
   const damageScale = (1 + UPGRADE_VALUES.damagePer * (upgrades[damageKey] || 0)) * permanent.damageMultiplier;
   const rateScale = (1 + UPGRADE_VALUES.fireRatePer * (upgrades[rateKey] || 0)) * permanent.fireRateMultiplier;
@@ -2624,9 +2394,7 @@ function applyUpgradeStats() {
     + UPGRADE_VALUES.poiseRegenPer * (upgrades.shadowPoise || 0);
   player.damageReduction = Math.min(
     UPGRADE_VALUES.reductionCap,
-    UPGRADE_VALUES.reductionPer * (upgrades.stabilize || 0)
-      + permanent.damageReduction
-      + (player.classId === 'tank' ? 0.1 : 0)
+    UPGRADE_VALUES.reductionPer * (upgrades.stabilize || 0) + permanent.damageReduction
   );
   player.magazineSize = player.baseMagazine + UPGRADE_VALUES.magazinePer * (upgrades.magazine || 0);
   player.reloadTime = Math.max(
@@ -2634,12 +2402,8 @@ function applyUpgradeStats() {
     player.baseReloadTime * (1 - UPGRADE_VALUES.reloadPer * (upgrades.reload || 0)) * permanent.reloadMultiplier
   );
   player.pierce = player.basePierce + (upgrades.pierce || 0);
-  const weaponKillHeal = player.classId === 'assassin' ? (getWeaponDefinition(player.weaponId).killHeal || 0) : 0;
-  const weaponExecution = player.classId === 'assassin' ? (getWeaponDefinition(player.weaponId).executionBonus || 1) : 1;
-  player.killHeal = weaponKillHeal
-    + UPGRADE_VALUES.killHealPer * (upgrades.shadowBlood || 0)
-    + permanent.lifesteal;
-  player.executionBonus = weaponExecution + UPGRADE_VALUES.executionPer * (upgrades.shadowExecution || 0);
+  player.killHeal = UPGRADE_VALUES.killHealPer * (upgrades.shadowBlood || 0) + permanent.lifesteal;
+  player.executionBonus = 1 + UPGRADE_VALUES.executionPer * (upgrades.shadowExecution || 0);
   player.dashCooldownDuration = Math.max(1.1, player.baseDashCooldown * (1 - 0.09 * (upgrades.shadowVeil || 0)));
   player.dashInvulnerability = 0.22 + UPGRADE_VALUES.veilIFramePer * (upgrades.shadowVeil || 0);
   player.headshotBonus = UPGRADE_VALUES.focusPer * (upgrades.focus || 0);
@@ -2651,6 +2415,7 @@ function resetStats() {
   const permanent = getPermanentStats();
   const classDefinition = getPlayerClassDefinition();
   const weaponDefinition = getWeaponDefinition(equippedWeapon);
+  const isAssassin = classDefinition.id === 'assassin';
   const classStats = classDefinition.stats;
   // Une arme de l'autre classe n'est pas equipable : on retombe sur celle de
   // la classe. L'Assassin peut porter une arme 'ray' (shuriken), donc c'est
@@ -3453,13 +3218,10 @@ function applyWeaponVisual(target = weapon) {
 
   if (showSabers) {
     if (assassinWeapon) {
-      assassinWeapon.scale.setScalar(definition.visualScale || 1);
-      assassinWeapon.userData.weaponId = definition.id;
       assassinWeapon.userData.energyMaterial?.color.setHex(definition.energyColor);
       assassinWeapon.userData.energyMaterial?.emissive.setHex(definition.energyColor);
       assassinWeapon.userData.accentMaterial?.color.setHex(definition.accentColor);
       assassinWeapon.userData.accentMaterial?.emissive.setHex(definition.accentColor);
-      assassinWeapon.userData.glowMaterial?.color.setHex(definition.energyColor);
     }
     return;
   }
@@ -4408,9 +4170,7 @@ function activateAbility() {
   if (state !== GAME_STATE.PLAYING) return;
   const ability = getAbilityDefinition(player.abilityId);
   if (!ability || ability.classId !== player.classId) {
-    abilityMessage = player.classId === 'tank'
-      ? 'BLINDAGE PASSIF // AUCUNE CAPACITE'
-      : "ACHETE UNE CAPACITE DANS L ATELIER";
+    abilityMessage = "ACHETE UNE CAPACITE DANS L ATELIER";
     abilityMessageTimer = 1.8;
     return;
   }
@@ -4630,7 +4390,6 @@ function slashAttack() {
   slashEffects.push({ mesh: slash, life: 0.22, maxLife: 0.22, startScale: 0.55, endScale: 1.35 });
 
   let hitCount = 0;
-  let guaranteedHit = false;
   for (const enemy of [...enemies]) {
     if (enemy.dead || hitCount >= player.slashTargets) continue;
     const toEnemy = new THREE.Vector3().subVectors(enemy.root.position, player.position);
@@ -4648,21 +4407,14 @@ function slashAttack() {
       * executionMultiplier
       * (guaranteed ? 2.2 : 1);
     player.critPending = false;
-    // countHit = false : une frappe multi-cibles reste UN tir. Sans cela, la
-    // TEMPÊTE (3 cibles) comptait 3 touches pour 1 swing et gonflait la
-    // précision, donc les crédits de fin de partie.
-    damageEnemy(enemy, damage, guaranteed, false);
-    if (guaranteed) guaranteedHit = true;
+    damageEnemy(enemy, damage, guaranteed);
     hitCount += 1;
   }
   if (hitCount > 0) {
-    shotsHit += 1;
-    if (guaranteedHit) headshots += 1;
     ui.crosshair.classList.remove('hit');
     void ui.crosshair.offsetWidth;
     ui.crosshair.classList.add('hit');
     window.setTimeout(() => ui.crosshair.classList.remove('hit'), 180);
-    audio.hit(guaranteedHit);
   } else {
     spawnImpact(slashCenter, new THREE.Vector3(0, 1, 0), slashColor, 3);
   }
@@ -5397,8 +5149,7 @@ function showUpgradeChoices(choices) {
     button.style.setProperty('--card-color', upgrade.color);
     const pips = Array.from({ length: upgrade.max }, (_, pipIndex) => `<i class="${pipIndex < currentLevel ? 'active' : ''}"></i>`).join('');
     const origin = upgrade.classId === 'ranger' ? 'RANGER'
-      : upgrade.classId === 'assassin' ? 'ASSASSIN'
-        : upgrade.classId === 'tank' ? 'TANK' : 'COMMUN';
+      : upgrade.classId === 'assassin' ? 'ASSASSIN' : 'COMMUN';
     button.innerHTML = `
       <span class="card-index">OPT_0${index + 1} // ${upgrade.short}</span>
       <span class="card-visual"><svg viewBox="0 0 64 64" aria-hidden="true">${upgrade.icon}</svg></span>
@@ -5589,7 +5340,7 @@ function updateHUD() {
   }
   ui.healthBar.classList.toggle('low', healthPercent <= 30);
 
-  const ammo = isAssassin ? '∞' : String(player.ammo).padStart(2, '0');
+  const ammo = isAssassin ? '2' : String(player.ammo).padStart(2, '0');
   if (hudCache.ammo !== ammo) {
     ui.ammoValue.textContent = ammo;
     hudCache.ammo = ammo;
@@ -5620,7 +5371,6 @@ function updateHUD() {
   // appuyer ni laquelle il lui reste.
   const ability = getAbilityDefinition(player.abilityId);
   const hasDash = isAssassin;
-  const isTank = player.classId === 'tank';
   const dashPret = hasDash && player.dashCooldown <= 0;
   const abilityStatus = abilityMessageTimer > 0
     ? abilityMessage
@@ -5632,10 +5382,8 @@ function updateHUD() {
         ? player.dashCooldown > 0
           ? `DASH // ${player.dashCooldown.toFixed(1)}s`
           : 'F // DASH PRÊT'
-        : isTank
-          ? `BLINDAGE // ${Math.ceil(player.maxHealth)} PV MAX // VITESSE RÉDUITE`
-          : "ÉQUIPE UNE CAPACITÉ DANS L'ATELIER";
-  const abilityText = ability ? ability.name : hasDash ? 'DASH OMBRE' : isTank ? 'BLINDAGE TANK' : 'AUCUNE';
+        : "ÉQUIPE UNE CAPACITÉ DANS L'ATELIER";
+  const abilityText = ability ? ability.name : hasDash ? 'DASH OMBRE' : 'AUCUNE';
   if (hudCache.abilityName !== abilityText) {
     ui.abilityName.textContent = abilityText;
     hudCache.abilityName = abilityText;
@@ -5647,7 +5395,7 @@ function updateHUD() {
   // Le voyant du bloc capacite ne parle QUE de la capacite. Le dash a son propre
   // affichage, dans le bandeau du bas : les deux sont separes, donc leurs
   // temoins doivent l etre aussi.
-  const abilityReady = ability ? player.abilityCooldown <= 0 : hasDash ? dashPret : isTank;
+  const abilityReady = ability ? player.abilityCooldown <= 0 : dashPret;
   const abilityCooling = ability ? player.abilityCooldown > 0 : hasDash && !dashPret;
   ui.abilityReadout.classList.toggle('ready', abilityReady);
   ui.abilityReadout.classList.toggle('cooling', abilityCooling);
@@ -5657,9 +5405,7 @@ function updateHUD() {
   if (ui.abilityHeading) {
     const headingText = hasDash
       ? (ability ? 'CAPACITÉ // ESPACE   DASH // F' : 'DASH // F')
-      : isTank
-        ? 'BLINDAGE // TANK'
-        : 'CAPACITÉ // ESPACE';
+      : 'CAPACITÉ // ESPACE';
     if (hudCache.abilityHeading !== headingText) {
       ui.abilityHeading.textContent = headingText;
       hudCache.abilityHeading = headingText;
@@ -5688,13 +5434,6 @@ function updateHUD() {
     if (hudCache.reload !== slashStatus) {
       ui.reloadStatus.textContent = slashStatus;
       hudCache.reload = slashStatus;
-    }
-  } else if (isTank) {
-    const tankStatus = player.reloadRemaining > 0 ? 'RECHARGE // EN COURS' : 'BLINDAGE // ACTIF';
-    ui.reloadStatus.classList.toggle('active', player.reloadRemaining > 0);
-    if (hudCache.reload !== tankStatus) {
-      ui.reloadStatus.textContent = tankStatus;
-      hudCache.reload = tankStatus;
     }
   } else if (player.reloadRemaining <= 0) {
     ui.reloadStatus.classList.remove('active');
@@ -5852,9 +5591,6 @@ function majCoucheTactile() {
   // courant, pas la classe du joueur : le Ranger ne doit pas heriter d'un bouton
   // qui ne repondrait a rien.
   document.documentElement.classList.toggle('touche-assassin', player.classId === 'assassin');
-  // Le Tank n'a aucune capacité active : son bouton CAP serait un bouton
-  // mort, exactement comme le DASH l'est pour le Ranger.
-  document.documentElement.classList.toggle('touche-sans-capacite', player.classId === 'tank');
   const actif = state === GAME_STATE.PLAYING || state === GAME_STATE.PAUSED;
   if (actif === touchLayerPlaying) return;
   touchLayerPlaying = actif;
@@ -6355,37 +6091,6 @@ function init() {
       startWave();
       return wave;
     };
-    // Saisie et restitution d'une sauvegarde. L'export etait deja couvert par
-    // un test qui lisait la variable locale du script injecte, jamais le vrai
-    // fichier produit par le jeu ; l'import n'etait pas couvert du tout. Ces
-    // deux acces permettent un aller-retour reel sur un profil, ce qui est la
-    // seule maniere de savoir si une nouvelle classe survit au chargement.
-    window.__nexus.sauvegarde = () => createProfileBackup();
-    window.__nexus.importer = async (texte) => {
-      try {
-        const data = JSON.parse(typeof texte === 'string' ? texte : await texte.text());
-        const profile = sanitizeImportedProfile(data);
-        applyProfileBackup(profile);
-        return { ok: true, classe: equippedClass, arme: equippedWeapon };
-      } catch (error) {
-        return { ok: false, erreur: String(error && error.message ? error.message : error) };
-      }
-    };
-    // Etat de charge courante, pour verifier qu une classe demarre bien avec
-    // son arme et ses PV, et pas avec ceux de la classe precedente.
-    window.__nexus.etatJoueur = () => ({
-      classe: player.classId,
-      arme: player.weaponId,
-      vie: player.health,
-      vieMax: player.maxHealth,
-      vitesse: player.speed,
-      degats: player.damage,
-      cadence: player.fireRate,
-      reduction: player.damageReduction,
-      soinKill: player.killHeal,
-      execution: player.executionBonus,
-      cibles: player.slashTargets
-    });
   }
 }
 

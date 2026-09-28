@@ -28,13 +28,7 @@ const CAS = [
   { nom: 'twinSabers / ranger', arme: 'twinSabers', classe: 'ranger' },
   { nom: 'rail / assassin', arme: 'rail', classe: 'assassin' },
   { nom: 'katana / ranger', arme: 'katana', classe: 'ranger' },
-  { nom: 'inconnue / assassin', arme: 'vieilleArme', classe: 'assassin' },
-  // Le Tank a sa propre arme de depart : sans ces trois lignes, une sauvegarde
-  // ou le Tank est equipe avec l'arme du Ranger passerait quand meme, alors
-  // que c'est exactement le defaut que ce test cherche.
-  { nom: 'bulwark / tank', arme: 'bulwark', classe: 'tank' },
-  { nom: 'pulse / tank', arme: 'pulse', classe: 'tank' },
-  { nom: 'twinSabers / tank', arme: 'twinSabers', classe: 'tank' }
+  { nom: 'inconnue / assassin', arme: 'vieilleArme', classe: 'assassin' }
 ];
 
 let done = false;
@@ -79,10 +73,8 @@ server.listen(PORT, '127.0.0.1', () => {
     // mauvaise cle n'ecrirait rien et le test passerait a vide.
     localStorage.setItem('nexus-breach-equipped-weapon', CAS[index].arme);
     localStorage.setItem('nexus-breach-equipped-class', CAS[index].classe);
-    localStorage.setItem('nexus-breach-classes', JSON.stringify(
-      CAS[index].classe === 'ranger' ? { ranger: true } : { [CAS[index].classe]: true }
-    ));
-    localStorage.setItem('nexus-breach-weapons', JSON.stringify({ [CAS[index].arme]: true }));
+    localStorage.setItem('nexus-breach-classes', JSON.stringify([CAS[index].classe]));
+    localStorage.setItem('nexus-breach-weapons', JSON.stringify([CAS[index].arme]));
   } catch (e) {}
   window.addEventListener('error', function (e) { window.__log = window.__log || []; window.__log.push('ERREUR: ' + (e.message || e)); });
 
