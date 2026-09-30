@@ -96,6 +96,9 @@ const ARENE = 44;
       let minimumObstacles = Infinity;
       let maximumObstacles = 0;
       let avecTerminal = 0;
+      let sansBoutiqueSuite = 0;
+      let pireSeriesSansBoutique = 0;
+      let premierPalierBoutique = -1;
       let repeteEgal = 0;
       let toutesDifferentes = 0;
       let pastillesTotal = 0;
@@ -118,6 +121,28 @@ const ARENE = 44;
         minimumObstacles = Math.min(minimumObstacles, n);
         maximumObstacles = Math.max(maximumObstacles, n);
         if (salle.terminal) avecTerminal += 1;
+
+        // La boutique ne peut pas manquer deux paliers de suite, et le premier
+        // palier en a toujours une.
+        //
+        // C'est la regle reelle. Elle remplace une ancienne verification qui ne
+        // mesurait qu'un TAUX de salles avec boutique, entre 30 et 65 %. Un taux
+        // ne dit rien du pire cas : avec 50 % de probabilite par salle, un taux
+        // global de 50 % est parfaitement compatible avec trois paliers d affilee
+        // sans aucune boutique. C est exactement ce que le joueur a rencontre, et
+        // le test le declarait bon.
+        //
+        // Une garantie sur le pire cas vaut mieux qu'une moyenne sur tous les
+        // cas : la moyenne ne dit pas ce qui arrive quand on a la malchance.
+        if (salle.terminal) {
+          if (premierPalierBoutique < 0) premierPalierBoutique = indice + 1;
+          sansBoutiqueSuite = 0;
+        } else {
+          sansBoutiqueSuite += 1;
+          if (sansBoutiqueSuite > pireSeriesSansBoutique) {
+            pireSeriesSansBoutique = sansBoutiqueSuite;
+          }
+        }
 
         // La garantie anti-blocage : toute pastille doit etre dans la zone que
         // la navigation du jeu atteint depuis l'arrivee. Une pastille coupee,
@@ -179,6 +204,8 @@ const ARENE = 44;
         obstaclesMin: minimumObstacles,
         obstaclesMax: maximumObstacles,
         avecTerminal,
+        pireSeriesSansBoutique,
+        premierPalierBoutique,
         reproductible: repeteEgal,
         sallesDistinctes: toutesDifferentes,
         pastillesTotal,
@@ -190,6 +217,8 @@ const ARENE = 44;
     console.log(`    obstacles par salle   : ${rapport.obstaclesMoyen.toFixed(1)}`
       + `  (de ${rapport.obstaclesMin} a ${rapport.obstaclesMax})`);
     console.log(`    avec un terminal      : ${rapport.avecTerminal} sur ${SALLES}`);
+    console.log(`    pire serie sans boutique : ${rapport.pireSeriesSansBoutique} palier(s)`
+      + `   premiere boutique au palier ${rapport.premierPalierBoutique}`);
     console.log(`    reproductibles        : ${rapport.reproductible} sur ${SALLES}`);
     console.log(`    salles distinctes     : ${rapport.sallesDistinctes} sur ${SALLES}`);
     // C'est la ligne qui repond au symptome "les monstres se coincent dans les
@@ -217,13 +246,20 @@ const ARENE = 44;
     if (rapport.obstaclesMax <= rapport.obstaclesMin) {
       problemes.push('toutes les salles ont la meme densite d obstacles');
     }
-    // Le taux de terminal est une promesse de conception : une salle sur deux
-    // doit proposer une boutique, sinon la descente n'a aucun rythme. On
-    // verifie qu'il tient, et pas seulement qu'il existe.
-    const taux = rapport.avecTerminal / SALLES;
-    if (taux < 0.3 || taux > 0.65) {
-      problemes.push('le taux de terminal est de ' + (taux * 100).toFixed(0)
-        + ' % alors qu il est annonce a 50 %');
+    // La boutique ne doit jamais manquer deux paliers de suite.
+//
+// C'est la regle, et elle se verifie sur le PIRE cas, pas sur une moyenne.
+// L'ancienne verification mesurait un taux de salles avec boutique et
+// acceptait 30 a 65 % : un taux ne dit rien de ce qui arrive quand on a la
+// malchance, et trois paliers d'affilee sans boutique y etaient parfaitement
+// compatibles. Le joueur a fait exactement cela.
+if (rapport.premierPalierBoutique !== 1) {
+      problemes.push('le premier palier n a pas de boutique : le joueur peut'
+        + ' faire toute sa premiere descente sans decouvrir la mecanique');
+    }
+    if (rapport.pireSeriesSansBoutique > 1) {
+      problemes.push('il y a ' + rapport.pireSeriesSansBoutique
+        + ' paliers d affilee sans boutique : on ne peut pas la manquer deux fois');
     }
     if (rapport.totalProblemes) {
       problemes.push(rapport.totalProblemes + ' anomalies de praticabilite');

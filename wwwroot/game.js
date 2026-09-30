@@ -51,9 +51,7 @@ const ui = {
   finalWave: document.querySelector('#final-wave'),
   finalKills: document.querySelector('#final-kills'),
   finalScore: document.querySelector('#final-score'),
-  finalReward: document.querySelector('#final-reward'),
   performanceRating: document.querySelector('#performance-rating'),
-  rewardBreakdown: document.querySelector('#reward-breakdown'),
   bestScore: document.querySelector('#best-score'),
   shop: document.querySelector('#shop-screen'),
   shopWeapons: document.querySelector('#shop-weapons'),
@@ -2451,11 +2449,31 @@ function genererSalle(graine, profondeur) {
     salle.portail = [ARRIVEE.x, opposition * (demi - 1.5)];
   }
 
-  // Le terminal est un BONUS aleatoire, pas une presence par defaut qu on
-  // effacerait ensuite. Avant, il etait toujours pose puis abandonne s'il
-  // tombait dans un bloc : sept salles sur huit en avaient un, et le joueur
-  // pouvait compter dessus.
-  salle.aTerminal = alea() < 0.5;
+  // Le terminal, ou le joueur depense l'argent de descente.
+  //
+  // C'est le SEUL endroit ou cet argent a un emploi. Il ne pouvait sortir
+  // qu'une fois sur deux, et sur trois paliers d'affilee la probabilite de
+  // n'en voir aucun est de 12,5 %. C'est ce qui est arrive : le joueur a
+  // fait trois etages, conclu que la boutique n'existait pas, et il avait
+  // raison sur son run : elle n'y etait pas.
+  //
+  // Ce n'est pas un bug, c'est une erreur de conception, et le genre qui ne
+  // se voit pas : aucun test n'echoue, la salle est valide, le terminal est
+  // accessible, la partie se termine normalement. Ce qui manque, c'est la
+  // promesse que le joueur verra la mecanique.
+  //
+  // Donc : le premier palier en a toujours une, pour qu'elle se voie tout de
+  // suite, et tous les paliers pairs en ont une. Entre deux boutiques il ne
+  // peut plus y avoir plus d'un palier sans : impossible d'en manquer deux
+  // de suite.
+  //
+  // Le court-circuit de || compte : sur un palier garanti, alea() n'est pas
+  // appele, donc la suite aleatoire de la salle decale. Les salles restent
+  // valides et reproductibles pour une meme graine, mais la disposition des
+  // blocs change. C'etait inevitable, et sans consequence : aucune capture
+  // ni aucun test ne depend d'un decoupage precis.
+  const boutiqueGarantie = profondeur === 1 || profondeur % 2 === 0;
+  salle.aTerminal = boutiqueGarantie || alea() < 0.5;
   if (salle.aTerminal) {
     // Le terminal doit etre LOIN du portail.
     //
@@ -2508,17 +2526,45 @@ function genererSalle(graine, profondeur) {
     salle.covers.length = 0;
     salle.pillars.length = 0;
   }
-  if (salle.terminal && !caseLibre(salle.terminal[0], salle.terminal[1], salle, 1.2)) {
-    salle.terminal = null;
-    salle.aTerminal = false;
-  }
-  // Distance terminal-portail : c'est la meme regle, appliquee apres coup parce
-  // que le portail peut avoir ete repousse apres le choix du terminal.
-  if (salle.terminal
-    && Math.hypot(salle.terminal[0] - salle.portail[0],
-      salle.terminal[1] - salle.portail[1]) < 11) {
-    salle.terminal = null;
-    salle.aTerminal = false;
+  // Le terminal doit etre sur une case libre, et loin du portail.
+  //
+  // Ces deux regles SUPPRIMAIENT le terminal quand elles n etaient pas
+  // respectees. C est la vraie raison du taux de boutiques observe : la regle
+  // des 50 % n etait qu un premier tirage, et tout ce qui echouait ensuite etait
+  // jete en silence. Le joueur perdait sa boutique sans qu aucun test ne le
+  // signale, et le calcul de frequence ne montrait qu une moyenne.
+  //
+  // Supprimer est le mauvais remede. Ces regles disent OU le terminal doit
+  // etre, pas qu il doit disparaitre. On le repose ailleurs, on reessaye.
+  //
+  // Et comme la boutique est une GARANTIE de conception, un epuement doit
+  // rester theoriquement possible sans casser la regle. D ou le repli : on
+  // garde le meilleur des essais, plutot que de rendre la main au hasard et
+  // d accepter un palier sans boutique.
+  if (salle.aTerminal) {
+    // Deux points sur un cercle de rayon 17 sont a plus de 11 de distance
+    // des que leurs angles different d environ 38 degres. Un tirage au hasard
+    // echoue donc environ une fois sur dix, et c est exactement ce que
+    // supprimait la regle d avant.
+    let meilleurePlace = salle.terminal;
+    let meilleurScore = -1;
+    for (let essai = 0; essai < 32; essai += 1) {
+      const libre = caseLibre(salle.terminal[0], salle.terminal[1], salle, 1.2);
+      const ecart = Math.hypot(salle.terminal[0] - salle.portail[0],
+        salle.terminal[1] - salle.portail[1]);
+      // On note le meilleur essai au passage. Le score punit la case
+      // occupee ET la proximite du portail, donc le repli est deja le moins
+      // mauvais des trente-deux plutot qu un tirage au hasard.
+      const score = (libre ? 100 : 0) - Math.abs(ecart - 11);
+      if (score > meilleurScore) { meilleurScore = score; meilleurePlace = salle.terminal; }
+      if (libre && ecart >= 11) break;
+      const angleT = alea() * Math.PI * 2;
+      salle.terminal = [
+        Math.cos(angleT) * (demi - 2.5),
+        Math.sin(angleT) * (demi - 2.5)
+      ];
+    }
+    salle.terminal = meilleurePlace;
   }
 
   // Verification finale, en deux etapes, parce que les deux modeles ne
@@ -7577,17 +7623,20 @@ function endGame() {
   ui.finalWave.textContent = String(wave);
   ui.finalKills.textContent = String(kills);
   ui.finalScore.textContent = score.toLocaleString('fr-FR');
-  ui.finalReward.textContent = `+${formatCredits(lastReward.total)} CR`;
+  // L'ecran de fin ne montre plus le nombre de credits gagnes.
+  //
+  // Il les accorde toujours : credits += lastReward.total, juste au-dessus.
+  // Ce n'est donc pas une recompense retiree, c'est une ligne d'ecran
+  // retiree. La distinction compte, parce que dans le donjon la somme
+  // affichee n'etait pas ce que le joueur venait de gagner : il venait de
+  // perdre son argent de descente, et ce nombre etait une conversion en
+  // atelier calculee sur la vague, les eliminations et la precision. Deux
+  // nombres dans le meme ecran, deux sens differents, et rien ne les
+  // distinguait a l'oeil.
+  //
+  // La note de performance reste : elle parle de comment on a joue, pas
+  // d'une somme d'argent.
   ui.performanceRating.textContent = `PERFORMANCE // ${lastReward.rating} // ${Math.round(lastReward.accuracy * 100)}% PRÉCISION`;
-  ui.rewardBreakdown.textContent = [
-    `VAGUE +${formatCredits(lastReward.waveCredits)}`,
-    `ÉLIMINATIONS +${formatCredits(lastReward.eliminationCredits)}`,
-    `SCORE +${formatCredits(lastReward.scoreCredits)}`,
-    `PRÉCISION +${formatCredits(lastReward.accuracyCredits)}`,
-    `HEADSHOTS +${formatCredits(lastReward.headshotCredits)}`,
-    `SURVIE +${formatCredits(lastReward.survivalCredits)}`,
-    `EFFICACITÉ +${formatCredits(lastReward.efficiencyCredits)}`
-  ].join(' // ');
   ui.bestScore.textContent = `MEILLEUR SCORE // ${bestScore.toLocaleString('fr-FR')}`;
   updateCreditsUI();
   ui.gameover.classList.add('active');
@@ -8545,8 +8594,22 @@ function init() {
     // Blesse le joueur a une fraction de sa vie maximale. Regenerer a partir
     // du maximum ne prouverait rien : les deux etats seraient identiques, et
     // n'importe quel jeu passerait le test.
-    window.__nexus.blesserJoueur = (fraction) => {
-      player.health = player.maxHealth * Math.max(0, Math.min(1, fraction));
+    // Blesse le joueur par le VRAI chemin des degats.
+//
+// La version d avant posait directement player.health, et c etait un piège : la
+// mort n est detectee que dans damagePlayer, donc poser la vie a zero ne
+// déclenchait rien. Le joueur restait Technically vivant avec zero point de vie,
+// et un test qui croyait avoir verifie l ecran de fin n avait regardé qu un ecran
+// que le jeu n avait jamais affiche.
+//
+// Passer par damagePlayer, c est verifier le vrai chemin : reductions,
+// invulnerabilite, secousse, son, et la detection de mort. Un test qui
+// contourne tout cela ne teste pas le jeu.
+window.__nexus.blesserJoueur = (fraction) => {
+      // La valeur est une FRACTION de vie maximum, bornee a 1 : passer 10 ne
+      // fait pas 10 fois la vie, il en remet une entiere. D ou la borne.
+      const cible = player.maxHealth * Math.max(0, Math.min(1, fraction));
+      damagePlayer(Math.max(0, player.health - cible), 'test');
       return player.health;
     };
     // Tire une salle de donjon sans la construire. La fonction est pure : elle
@@ -8863,3 +8926,4 @@ try {
     `;
   }
 }
+

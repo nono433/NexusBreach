@@ -594,6 +594,62 @@ async function attendreEcran(session, id, attendu, delaiMs, message) {
       problemes.push('la campagne a perdu ou gagne une section de boutique : '
         + JSON.stringify(campagne));
     }
+
+    // 10. L ecran de fin ne montre plus les credits gagnes.
+    //
+    // Le joueur l'a demande : sur un run de donjon, l argent de descente vient
+    // de disparaitre, et le nombre affiche a cote etait une conversion en
+    // atelier. Deux sommes, deux sens, et rien pour les distinguer.
+    //
+    // On verifie deux choses, et non une : que le texte est vide, ET que
+    // l element est MASQUE. Un element vide garde sa place dans le flux : le
+    // joueur verrait un trou au milieu du bilan, ce qui est presque pire
+    // qu'un nombre inutile.
+    const fin = await session.evaluer(`(async () => {
+      // On repart d une vraie partie. L etape 11 vient de relancer, donc le jeu
+      // est au menu : sans cela, aucun degat ne declenche la fin, et le test
+      // verifiait un ecran qui ne s etait jamais affiche.
+      document.getElementById('start-button').click();
+      await new Promise((r) => setTimeout(r, 1500));
+      // blesserJoueur prend une FRACTION de vie max, pas un montant : passer 10
+      // remettait la vie au maximum, et le joueur ne mourait jamais. C est
+      // piege parce que la fonction a l air de prendre des degats.
+      window.__nexus.blesserJoueur(0);
+      await new Promise((r) => setTimeout(r, 1500));
+      const r = document.getElementById('final-reward');
+      const b = document.getElementById('reward-breakdown');
+      const ecran = document.getElementById('gameover-screen');
+      const visible = (e) => Boolean(e) && e.offsetParent !== null
+        && getComputedStyle(e).display !== 'none';
+      return {
+        actif: Boolean(ecran) && ecran.classList.contains('active'),
+        texteRecompense: r ? r.textContent.trim() : 'ABSENT',
+        texteDetail: b ? b.textContent.trim() : 'ABSENT',
+        visibleRecompense: visible(r),
+        visibleDetail: visible(b)
+      };
+    })()`);
+    console.log('  10. ecran de fin       : ' + JSON.stringify(fin));
+    // ABSENT est le meilleur resultat : l element n existe plus du tout. Vide
+    // serait acceptable, visible serait un echec. On accepte les deux premiers
+    // cas et on refuse le troisieme, y compris quand l element est masque par
+    // l attribut hidden : le CSS impose display: block sur .reward-banner
+    // strong, et [hidden] ne l emporte pas.
+    if (fin.texteRecompense !== '' && fin.texteRecompense !== 'ABSENT') {
+      problemes.push("l ecran de fin affiche encore les credits gagnes : '"
+        + fin.texteRecompense + "'");
+    }
+    if (fin.texteDetail !== '' && fin.texteDetail !== 'ABSENT') {
+      problemes.push("l ecran de fin affiche encore le detail des credits : '"
+        + fin.texteDetail.slice(0, 60) + "'");
+    }
+    if (fin.visibleRecompense || fin.visibleDetail) {
+      problemes.push('l ecran de fin garde la place des credits :'
+        + ' un element masque autrement laisse un trou dans la mise en page');
+    }
+    if (!fin.actif) {
+      problemes.push("l ecran de fin ne s affiche pas apres la mort : rien a tester");
+    }
   } catch (e) {
     problemes.push(e.message);
   } finally {
