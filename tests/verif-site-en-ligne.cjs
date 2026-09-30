@@ -1,120 +1,127 @@
-// Charge la version DEPLOYEE (pas la copie locale) dans un navigateur et
-// verifie qu'elle demarre really. Un HTTP 200 ne prouve rien : le jeu peut
-// charger et rester bloque sur le menu.
-const { spawn } = require('node:child_process');
-const http = require('node:http');
+// Verifie que le site DEPLOYE demarre reellement, sur un ecran de telephone.
+//
+// Un HTTP 200 ne prouve rien : le jeu peut charger et rester bloque sur le
+// menu, ou ne jamais signaler qu il est pret. Ce test ouvre donc l'URL
+// deployee dans un vrai navigateur et joue le role d'un joueur : il appuie sur
+// demarrer, puis regarde ce qui s'affiche.
+//
+// POURQUOI CE TEST A ETE REECRIT DE ZERO
+//
+// La version precedente chargeait le site dans un IFRAME pour l'observer.
+// Trois defauts, dont deux mortels :
+//
+//   1. Un iframe cross-origin donne contentDocument === null. Le site est
+//      chez github.io, la page de sonde etait chez 127.0.0.1. Le script
+//      plantait donc sur un null, avant meme de pouvoir regarder quoi que ce
+//      soit. Ce n'etait pas une limite de synchronisation : c'etait
+//      impossible, par construction.
+//
+//   2. Son petit relais repondait 404 a tout sauf POST /rapport, donc y
+//      compris a sa propre page. Il ne s'est jamais chargee.
+//
+//   3. Le plus grave : le test sortait avec le code 0 dans TOUS les cas. Il
+//      pouvait donc etre rouge independamment du jeu, indefiniment, et
+//      paraitre vert a quiconque regardait la sortie.
+//
+// Un test qui echoue en passant pour un succes est pire que pas de test : il
+// donne une fausse assurance. Celui-la echoue pour de vrai, et il teste
+// directement la page, sans intermediaire.
+const { ouvrir, attendre } = require('./_cdp.cjs');
 const path = require('node:path');
-const fs = require('node:fs');
 
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-const PORT = 5098;
-const PROFILE = path.join(__dirname, '..', '_edgeprofile-enligne');
 const SITE = 'https://nono433.github.io/NexusBreach/index.html';
+
 // Format de telephone : c'est le cas que le joueur signale.
 const LARGEUR = 390;
 const HAUTEUR = 844;
 
-let done = false;
-let report = null;
-
-// Petit relais : la page injectee POSTe son rapport ici, le serveur ne sert
-// que ce point de collecte (le jeu vient de GitHub Pages, pas de ce serveur).
-const server = http.createServer((request, response) => {
-  if (request.method === 'POST' && request.url === '/rapport') {
-    let body = '';
-    request.on('data', (c) => { body += c; });
-    request.on('end', () => { try { report = JSON.parse(body); } catch (e) { report = { erreur: body.slice(0, 400) }; } done = true; response.writeHead(204).end(); });
-    return;
-  }
-  response.writeHead(404).end('404');
-});
-
-server.listen(PORT, '127.0.0.1', () => {
-  // La page distante ne peut pas POSTer vers 127.0.0.1 a cause de CORS :
-  // on donc charge une copie locale de la page qui pointe vers le site
-  // deploye, et qui injecte le collecteur.
-  fs.writeFileSync(path.join(__dirname, '..', 'tests', '__enligne.html'), `<!doctype html>
-<html><head><meta charset="utf-8"><title>sonde</title></head><body>
-<script>
-// On charge reellement le site deploye dans un iframe et on l'observe.
-var journal = [], erreurs = [];
-window.addEventListener('error', function (e) { erreurs.push('ERREUR: ' + (e.message || e)); });
-var f = document.createElement('iframe');
-f.width = ${LARGEUR}; f.height = ${HAUTEUR};
-f.style.border = '0';
-f.src = '${SITE}';
-document.body.appendChild(f);
-function attendre(n) {
-  if (n < 60) { setTimeout(function () { attendre(n + 1); }, 250); return; }
+(async () => {
+  let session = null;
+  const echecs = [];
   try {
-    var w = f.contentWindow, d = f.contentDocument;
-    var menu = d.getElementById('menu-screen');
-    var canvas = d.getElementById('game-canvas');
-    var btn = d.getElementById('start-button');
-    var racine = d.documentElement;
-    var resultat = {
-      taille: [w.innerWidth, w.innerHeight],
-      portrait: w.innerHeight > w.innerWidth,
-      menuPresent: Boolean(menu),
-      menuActif: Boolean(menu && menu.classList.contains('active')),
-      menuVisible: Boolean(menu) && w.getComputedStyle(menu).visibility,
-      canvasPresent: Boolean(canvas),
-      canvasTaille: canvas ? [canvas.width, canvas.height] : null,
-      boutonDemarrer: Boolean(btn),
-      coucheTactile: Boolean(d.getElementById('touch-layer')),
-      coucheTactileDisplay: d.getElementById('touch-layer') ? w.getComputedStyle(d.getElementById('touch-layer')).display : null,
-      rotationEcran: Boolean(d.getElementById('rotate-hint')),
-      rotationDisplay: d.getElementById('rotate-hint') ? w.getComputedStyle(d.getElementById('rotate-hint')).display : null,
-      classesRacine: racine.className,
-      scripts: d.querySelectorAll('script').length
-    };
-    // On tente de demarrer pour voir si le jeu repond.
-    if (btn) { btn.click(); }
-    setTimeout(function () {
-      try {
-        var h = d.getElementById('hud');
-        resultat.jeuLance = Boolean(h) && !h.classList.contains('hidden');
-        resultat.vieApres = d.getElementById('health-value') ? d.getElementById('health-value').textContent : null;
-        resultat.vague = d.getElementById('wave-value') ? d.getElementById('wave-value').textContent : null;
-      } catch (e) { resultat.sondage = String(e); }
-      fetch('http://127.0.0.1:${PORT}/rapport', { method: 'POST', body: JSON.stringify({ resultat: resultat, erreurs: erreurs }) });
-    }, 3000);
-  } catch (e) {
-    fetch('http://127.0.0.1:${PORT}/rapport', { method: 'POST', body: JSON.stringify({ erreur: String(e), erreurs: erreurs }) });
-  }
-}
-attendre(0);
-</script></body></html>`);
+    session = await ouvrir(SITE, path.join(__dirname, '..'),
+      { largeur: LARGEUR, hauteur: HAUTEUR });
 
-  const edge = spawn(EDGE, [
-    '--headless=new', '--disable-gpu', '--use-gl=swiftshader', '--enable-unsafe-swiftshader',
-    '--no-sandbox', '--disable-dev-shm-usage',
-    `--screenshot=${path.join(__dirname, '..', 'tests', 'capture-enligne-telephone.png')}`,
-    `--window-size=${LARGEUR},${HAUTEUR}`, '--virtual-time-budget=40000',
-    `--user-data-dir=${PROFILE}`, `http://127.0.0.1:${PORT}/__enligne.html`
-  ], { stdio: ['ignore', 'ignore', 'ignore'] });
+    // 1. Le jeu doit signaler qu il est pret. Un page qui charge sans cela
+    //    reste bloquee sur l'ecran de chargement.
+    let pret = false;
+    const limite = Date.now() + 60000;
+    while (Date.now() < limite && !pret) {
+      pret = await session.evaluer('Boolean(window.__nexus && window.__nexus.pret)');
+      if (!pret) await attendre(500);
+    }
+    console.log('  jeu pret          : ' + pret);
+    if (!pret) echecs.push('le jeu n a jamais signale etre pret');
 
-  const killer = setTimeout(() => { if (!done) { console.log('Delai depasse.'); finish(); } }, 150000);
-  function finish() {
-    clearTimeout(killer);
-    try { edge.kill('SIGKILL'); } catch (e) {}
-    if (report && report.resultat) {
-      console.log('=== SONDE DU SITE DEPLOYE ===');
-      for (const [k, v] of Object.entries(report.resultat)) {
-        console.log(`  ${k.padEnd(22)} ${JSON.stringify(v)}`);
+    // 2. La version servie. C'est le controle qui vaut : sans lui, on pourrait
+    //    tester un cache du navigateur et conclure que le deploiement a marche.
+    const version = await session.evaluer(
+      "Array.from(document.querySelectorAll('script[src]'))"
+      + ".map(function (s) { return s.getAttribute('src'); }).join(' ')");
+    console.log('  scripts charges   : ' + version);
+    const v = (version.match(/game\.js\?v=(\d+)/) || [])[1];
+    const attendue = require('node:fs')
+      .readFileSync(path.join(__dirname, '..', 'wwwroot', 'index.html'), 'utf8')
+      .match(/game\.js\?v=(\d+)/)[1];
+    console.log('  version deployee  : ' + (v || 'absente') + '   version locale : ' + attendue);
+    if (v !== attendue) {
+      echecs.push('le site sert game.js?v=' + (v || 'absent')
+        + ' alors que la copie locale est en v=' + attendue
+        + ' : le deploiement n est pas a jour, ou c est un cache');
+    }
+
+    if (pret) {
+      // 3. Le selecteur de mode : c'est la fonctionnalite ajoutee depuis le
+      //    dernier deploiement. Si elle est absente, le site est bien en
+      //    retard, et le test doit le dire.
+      const mode = await session.evaluer(`(() => ({
+        donjon: Boolean(document.querySelector('[data-mode-id="donjon"]')),
+        campagne: Boolean(document.querySelector('[data-mode-id="campagne"]'))
+      }))()`);
+      console.log('  selecteur de mode : ' + JSON.stringify(mode));
+      if (!mode.donjon || !mode.campagne) {
+        echecs.push('le selecteur de mode est absent du site deploye');
       }
-    } else {
-      console.log('Aucun rapport :', report ? JSON.stringify(report).slice(0, 300) : 'rien');
+
+      // 4. Jouer : on appuie sur demarrer et on regarde ce que devient l'ecran.
+      const vieAvant = await session.evaluer(
+        "document.getElementById('health-value').textContent");
+      await session.evaluer("document.getElementById('start-button').click(); true");
+      await attendre(3000);
+      const apres = await session.evaluer(`(() => ({
+        hudVisible: !document.getElementById('hud').classList.contains('hidden'),
+        integrite: document.getElementById('health-value').textContent,
+        vague: document.getElementById('wave-value').textContent,
+        hostiles: document.getElementById('enemy-value').textContent,
+        coucheTactile: Boolean(document.getElementById('touch-layer'))
+      }))()`);
+      console.log('  vie au menu       : ' + vieAvant);
+      console.log('  apres demarrage    : ' + JSON.stringify(apres));
+      if (!apres.hudVisible) echecs.push('le jeu ne demarre pas apres un clic sur demarrer');
+      if (!apres.coucheTactile) echecs.push('aucune couche tactile sur un ecran de telephone');
+
+      // 5. Les erreurs de la page. Le jeu les collecte lui-meme ; une exception
+      //    lancee pendant l'initialisation y laisse une trace, alors que la
+      //    page a l'air de charger normalement.
+      const erreurs = await session.evaluer(
+        'JSON.stringify((window.__nexus && window.__nexus.erreurs) || [])');
+      console.log('  erreurs du jeu    : ' + erreurs);
+      if (erreurs !== '[]') echecs.push('le jeu a enregistre des erreurs : ' + erreurs);
     }
-    if (report && report.erreurs && report.erreurs.length) {
-      console.log('  erreurs :', JSON.stringify(report.erreurs));
-    }
-    const shot = path.join(__dirname, '..', 'tests', 'capture-enligne-telephone.png');
-    if (fs.existsSync(shot)) console.log('  capture :', shot);
-    try { fs.unlinkSync(path.join(__dirname, '..', 'tests', '__enligne.html')); } catch (e) {}
-    try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch (e) {}
-    server.close();
-    process.exit(0);
+
+    await session.capturer(path.join(__dirname, 'capture-enligne-telephone.png'));
+    console.log('  capture           : tests/capture-enligne-telephone.png');
+  } catch (e) {
+    console.log('  ERREUR : ' + e.message);
+    echecs.push(e.message);
+  } finally {
+    if (session) await session.fermer();
   }
-  const poll = setInterval(() => { if (done) { clearInterval(poll); setTimeout(finish, 400); } }, 300);
-});
+
+  if (echecs.length) {
+    console.log('\n  PROBLEMES :');
+    echecs.forEach((e) => console.log('   - ' + e));
+    process.exit(1);
+  }
+  console.log('\n  LE SITE DEPLOYE DEMARRE, SUR UN ECRAN DE TELEPHONE.');
+})();

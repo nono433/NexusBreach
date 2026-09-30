@@ -185,6 +185,15 @@ class Session {
 // Ouvre une page, attend qu'elle soit pilotable, et rend une session.
 async function ouvrir(page, racine, options = {}) {
   const { largeur = 480, hauteur = 360, budget = 0, query = '' } = options;
+  // Une page peut etre une URL absolue : c'est ce qui permet de tester le site
+  // DEPLOYE avec le meme pilote que la copie locale.
+  //
+  // C'etait necessaire. Le seul test en ligne du projet chargeait le site dans
+  // un iframe pour l'observer, et un iframe cross-origin donne
+  // contentDocument === null : le script de sonde plantait sur un null et le
+  // test expirait sans rien avoir verifie. Il pouvait etre rouge independamment
+  // du jeu, et il l'etait deja depuis sa creation.
+  const estUrl = /^https?:\/\//.test(page);
   const port = await portLibre();
   // Le port du serveur de fichiers doit differer de celui de DevTools : sinon
   // /json/list repond 404 et l'on croit a un navigateur casse.
@@ -192,7 +201,10 @@ async function ouvrir(page, racine, options = {}) {
   while (portServeur === port) portServeur = await portLibre();
   const profil = path.join(os.tmpdir(), 'nb-cdp-' + Math.random().toString(36).slice(2, 9));
   try { fs.rmSync(profil, { recursive: true, force: true }); } catch (e) {}
-  const serveur = await servir(racine, portServeur, page);
+  // En ligne, il n'y a rien a servir : la page est chez GitHub. Le serveur
+  // devient un bouchon, parce que Session.fermer() l'appelle toujours.
+  const serveur = estUrl ? { close() {} } : await servir(racine, portServeur, page);
+  const cible0 = `${estUrl ? page : `http://127.0.0.1:${portServeur}/${page}`}${query ? '?' + query : ''}`;
 
   const args = [
     '--headless=new',
@@ -207,7 +219,7 @@ async function ouvrir(page, racine, options = {}) {
     `--window-size=${largeur},${hauteur}`,
     `--user-data-dir=${profil}`,
     `--remote-debugging-port=${port}`,
-    `http://127.0.0.1:${portServeur}/${page}${query ? '?' + query : ''}`
+    cible0
   ];
   if (budget > 0) args.splice(3, 0, `--virtual-time-budget=${budget}`);
 
@@ -252,7 +264,7 @@ async function ouvrir(page, racine, options = {}) {
   // declenche par ?tactile=1, et une navigation qui l'oublierait fait croire
   // au jeu qu'il tourne sur un ordinateur. Le symptome est trompeur : le jeu
   // demarre tres bien, mais aucune commande tactile n existe.
-  const attendue = `http://127.0.0.1:${portServeur}/${page}${query ? '?' + query : ''}`;
+  const attendue = cible0;
   const limiteDoc = Date.now() + 15000;
   while (Date.now() < limiteDoc) {
     const href = await session.evaluer('location.href').catch(() => '');
