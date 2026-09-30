@@ -19,19 +19,35 @@ const SORTIE = path.join(__dirname, 'apercu-robots.html');
 const source = fs.readFileSync(path.join(WWW, 'game.js'), 'utf8');
 const lignes = source.split(/\r?\n/);
 
-// Le bloc du robot va de la fonction box() jusqu'a la fin d animerBras(), la
+// Le bloc du robot va du generateur de cube jusqu'a la fin d animerBras(), la
 // ligne juste avant createEnemyMaterials(). Ces reperes sont explicites plutot
 // que magiques : si le jeu change, une seule ligne du generateur est a
 // corriger, et le test de coherence le dira aussitot.
+//
+// L'ancre est le generateur de cube, PAS la ligne qui l'instancie. Les deux
+// vaalent tant que le cube etait une BoxGeometry de Three.js ; le chanfrein a
+// remplace l'instanciation, et l'ancre pointait justement dessus.
+//
+// Cet echec avait un inconvenient serieux : la capture a continue a utiliser
+// l'ancien fichier HTML deja genere, et elle a annonce que tout allait bien
+// en photographiant l'ancien code. Une capture qui ne peut pas echouer ne
+// prouve rien. C'est corrige en aval : capture-robots.cjs regenere toujours,
+// et echoue si la generation echoue.
 function indexDe(ligne) {
   const i = lignes.findIndex((l) => l.trim() === ligne);
   if (i < 0) throw new Error('reper introuvable dans game.js : ' + ligne);
   return i;
 }
 
-const debut = indexDe('const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);');
+// L'ancre est le generateur de PAVE, pas creerCubeChanfreine. Ce dernier ne
+// fait plus que lui déléguer : prendre la boite droite comme début de bloc
+// laissait la generation de pavés hors de l'extrait, et l'apercu ne rendait
+// rien du tout. Le message d'erreur ne le disait pas — un ReferenceError sur
+// une fonction du jeu, dans une page de test, se lit comme un probleme de
+// page.
+const debut = indexDe('function creerPaveChanfreine(chanfrein, fusee) {');
 const fin = indexDe('function makeHealthBar(color) {');
-if (fin <= debut) throw new Error('ordre inattendu : makeHealthBar avant unitBoxGeometry');
+if (fin <= debut) throw new Error('ordre inattendu : makeHealthBar avant le cube');
 const bloc = lignes.slice(debut, fin).join('\n');
 
 // La taille de la tete est calculee dans createEnemy, pas dans buildHumanoid :
@@ -157,6 +173,29 @@ const bras = GABARITS.map((g, i) => {
   const x = (i - (GABARITS.length - 1) / 2) * 3.1;
   return robotier(g.nom, Number(g.couleur), Number(g.scale), g.elite, x);
 });
+
+// Mode gros plan : on cadre un seul robot, de tres pres.
+//
+// L'apercu d'ensemble sert a comparer les gabarits entre eux. Il ne sert
+// Absolutement rien a juger une arete : a quinze metres de distance, un
+// chanfrein de sept pour cent fait un pixel, et l'image est la meme avec ou
+// sans. C'est le piege classique du controle visuel — une capture qui ne peut
+// pas montrer ce qu'on cherche a montrer.
+//
+// On passe en gros plan avec ?gros=1 dans l'adresse. La scene et les robots
+// sont les memes : seule la camera change.
+const GROS_PLAN = new URLSearchParams(location.search).has('gros');
+if (GROS_PLAN) {
+  // Le Rôdeur de Braise, au centre de la rangee : taille mediane, silhouette
+  // lisible, et un modele de taille dans l'image pour juger l'echelle.
+  const cible = bras[Math.min(2, bras.length - 1)].root;
+  const echelle = cible.scale.x;
+  camera.position.set(cible.position.x + 2.7 * echelle,
+    cible.position.y + 1.85 * echelle,
+    cible.position.z + 3.5 * echelle);
+  camera.lookAt(cible.position.x, cible.position.y + 1.0 * echelle, cible.position.z);
+  document.querySelectorAll('div').forEach((d) => { d.style.display = 'none'; });
+}
 
 // Le geste de preparation : on le declenche en boucle, sinon on ne voit pas ce
 // qui se passe quand un ennemi arme son coup.

@@ -279,6 +279,39 @@ button {
 .map-button:hover, .map-button.active { border-color: var(--cyan); background: rgba(0, 245, 255, 0.09); color: var(--white); }
 .map-button.active span { color: var(--cyan); }
 
+/* Le selecteur de mode reprend la largeur et le retrait du selecteur de carte,
+   pour que les deux se lisent comme une meme colonne. Boutons et titres
+   reutilisent leurs propres classes : un mode n'est pas une carte, mais il se
+   choisit de la meme facon, et dupliquer le style n'apporterait rien. */
+.mode-selector { width: min(430px, 100%); margin: 25px 0 0 80px; }
+.mode-selector .map-selector-heading { align-items: flex-start; }
+/* Le titre tient sur une ligne. Sans cela, la description longue du donjon
+   ecrasait la colonne de gauche et le mot MODE DE JEU se cassait en trois
+   lignes, ce qui lisait comme un bug de mise en page. */
+.mode-selector .map-selector-heading span { padding-top: 1px; white-space: nowrap; flex: 0 0 auto; }
+.mode-selector .map-selector-heading strong { min-width: 0; }
+/* La description du donjon est bien plus longue que celle d une carte. Elle
+   passe sur sa propre ligne plutot que d etre comprimee dans la colonne de
+   droite, ou elle devenait illisible. */
+.mode-selector .map-selector-heading strong { text-align: right; line-height: 1.55; }
+/* Les ameliorations de salle du donjon. La jauge de niveaux remplace le
+   compteur "NIV xx" des autres cartes : c'est la seule information qui change
+   d'un achat a l'autre, et elle doit se lire d'un coup d'oeil. */
+.shop-items.shop-ameliorations { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.amelioration-niveaux { display: flex; gap: 3px; margin: 8px 0 2px; }
+.amelioration-niveaux i {
+  flex: 1 1 auto;
+  height: 4px;
+  background: #1b2a35;
+  border: 1px solid #263b49;
+}
+.amelioration-niveaux i.on {
+  background: var(--shop-color, #00eaff);
+  border-color: var(--shop-color, #00eaff);
+  box-shadow: 0 0 6px var(--shop-color, #00eaff);
+}
+.shop-item.amelioration-item p { min-height: 2.9em; }
+
 .class-selector { width: min(430px, 100%); margin: 16px 0 0 80px; }
 .class-selector-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .class-selector-heading span { color: var(--muted); font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.12em; }
@@ -1115,6 +1148,7 @@ kbd { min-width: 17px; padding: 3px 4px; border: 1px solid rgba(130, 172, 183, 0
   .menu-content h1 { font-size: clamp(58px, 17vw, 90px); }
   .briefing,
   .map-selector,
+  .mode-selector,
   .class-selector,
   .primary-button,
   .secondary-button,
@@ -1127,6 +1161,7 @@ kbd { min-width: 17px; padding: 3px 4px; border: 1px solid rgba(130, 172, 183, 0
   .hud-top { grid-template-columns: 1fr auto 1fr auto; }
   .shop-items { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .shop-items.shop-classes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shop-items.shop-ameliorations { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ammo-panel { grid-column: 2; }
   .health-panel { width: min(260px, 44vw); }
   .upgrade-options { grid-template-columns: 1fr; }

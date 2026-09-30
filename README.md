@@ -10,6 +10,68 @@ Jeu de tir en vue à la première personne avec vagues de monstres et améliorat
 - Le bouton **ATELIER // ÉQUIPEMENT** du menu, ou **VISITER L'ATELIER** après une mort, permet d’acheter des bonus permanents.
 - Les modules achetés sont automatiquement actifs au début de la prochaine partie. Les améliorations affichées entre les vagues restent temporaires à la partie en cours.
 - Deux cartes sont disponibles : **NEXUS** et **FOUNDRY**. La carte sélectionnée est sauvegardée dans le navigateur. Nexus conserve ses quatre mobs standards, tandis que Foundry possède quatre machines personnalisées et plus fortes : **Crawleur de Scorie**, **Rôdeur de Braise**, **Colosse de Laitier** et **Forge-Monarque**.
+- Deux modes de jeu sont disponibles : **CAMPAGNE** et **DONJON**. Voir la section « Le mode Donjon » plus bas. Le mode sélectionné est sauvegardé dans le navigateur.
+
+## Le mode Donjon
+
+Le Donjon n'est pas une carte de plus : c'est une autre façon de terminer une vague et de progresser. On y descend de salle en salle, et rien de ce qui fait la campagne n'y existe.
+
+**Ce qui change**
+
+- **Les salles sont tirées au sort.** Chaque palier tire ses obstacles, ses piliers, ses pastilles d'apparition et ses lumières à partir d'une graine. Deux parties ne se ressemblent pas.
+- **On n'a pas d'écran de fin de vague.** Pas de modules, pas de carte de soin. Quand la salle est vide, le portail s'ouvre et c'est tout.
+- **On franchit une porte pour descendre.** Le portail apparaît quelque part dans la salle, et il faut le traverser : on ne passe pas à la salle suivante automatiquement.
+- **Les crédits se gagnent par élimination et se dépensent au terminal.** Un terminal d'atelier traîne dans environ 40 % des salles, à distance du portail. On peut l'ignorer et descendre, ou perdre du temps et des munitions à le chercher.
+- **Le terminal ne vend ni classe, ni capacité, ni module d'atelier.** À la place, huit **améliorations de statistiques** : dégâts, cadence, intégrité, recharge, chargeur, vitesse, blindage, perforation. Elles ont plusieurs niveaux, le coût monte de 50 à 90 % à chaque niveau, et elles ne valent que pour la descente en cours. Sans elles, la seule chose à faire de son argent serait changer d'arme.
+- **L'Atelier permanent est coupé.** Le Donjon renvoie des multiplicateurs à zéro : un joueur qui a joué cent fois en campagne arrive au premier palier sans aucun bonus.
+- **Aucun soin gratuit.** Pas de module, pas de capacité : la vie ne se refait qu'en payant.
+- **Un boss tous les cinq paliers.** L'Alpha n'est pas tiré au sort comme en campagne, il est une échéance.
+
+**Ce qui ne change pas** : les deux classes, les armes, les capacités, les cartes, et tout ce qui se débloque en campagne. Le Donjon s'y joue avec ce qu'on a déjà, et n'y rend rien.
+
+**Deux portefeuilles, jamais confondus.** L'argent du Donjon est de l'argent de run : il ne touche pas au crédit d'atelier. **Il se garde d'un palier à l'autre et ne disparaît qu'à la mort.** C'est ce qui donne un intérêt à nettoyer vite et à descendre, et ce qui permet d'arriver chez un marchand avec de quoi acheter — un terminal trouvé dans une salle vide ne sert à rien. Le HUD annonce ce qu'on peut dépenser maintenant, le menu continue d'annoncer ce qu'on possède entre les parties.
+
+**Une nouvelle partie repart de zéro**, argent comme améliorations. Le run est la bonne unité : ce qu'on a dépensé appartient à cette descente, pas au personnage qu'on remplace.
+
+**Les ennemis ne se bloquent plus dans les murs.** C'était le défaut le plus signalé du mode, et il avait trois causes distinctes, toutes corrigées :
+
+1. Le générateur garantissait la connectivité des salles avec une grille de 1,0 unité, alors que le jeu navigue sur une grille de 1,5 avec une règle de coupe de coin. Une salle pouvait donc être validée par le générateur et contenir des zones où l'IA ne savait pas revenir. Le générateur rejoue maintenant **exactement** les règles de navigation du jeu, et `navConcordance()` vérifie que les deux modèles n'ont pas divergé.
+2. Le point d'apparition des ennemis était décalé aléatoirement de ±0,75 unité **sans être vérifié** : un ennemi pouvait naître à l'intérieur d'un bloc.
+3. Le champ de navigation n'était reconstruit qu'à la frame suivante. `findSpawnPosition` le consulte pour choisir où naître, et lisait donc un décor qui n'existait plus. Il est maintenant reconstruit immédiatement.
+
+S'y ajoute un **filet de sécurité** : un ennemi qui n'a pas bougé pendant 1,1 s, à plus de 3,2 m du joueur, est replacé sur la case de navigation qui fait le plus de progrès vers lui. Il couvre le cas résiduel, qu'aucune grille ne peut traiter : un couloir trop étroit au milieu alors que ses deux extrémités sont libres.
+
+## Les graphismes
+
+Le jeu garde sa lecture *low-poly*, mais il ne lit plus « une pile de cubes ». Deux changements, choisis parce qu'ils sont bon marché et durable.
+
+**Des arêtes coupées.** Le cube de base de tous les robots est devenu une boîte chanfreinée : 44 triangles au lieu de 12, avec une facette qui attrape la lumière sur chaque arête. C'est le levier le plus large du projet : les 27 pièces d'un robot sont décrites par `box()` et fusionnées par `mergeBoxParts`, qui lit ce cube. **Le chanfrein s'applique donc partout d'un coup, sans toucher aux 161 lignes du constructeur**, et toujours en une seule géométrie fusionnée.
+
+Le même traitement est appliqué à l'arme du joueur, aux sabres de l'Assassin, à la tête des robots, aux murs de l'arène et aux blocs de couverture. **Les liserés lumineux ne sont pas chanfreinés** : ils font sept millimètres d'épaisseur, un chanfrein ne ferait que les ternir. **La hitbox des ennemis non plus** — elle est invisible, mais elle sert aussi de cible de visée, et une boîte chanfreinée a les coins rentrés : un ennemi tiré à l'épaule cesserait d'être touché. Un changement graphique qui modifie le tir, on ne le fait pas.
+
+**Une plaque de blindage.** Une seule image, construite au premier besoin, partagée par tous les ennemis, les murs et les couvertures : joints de panneaux, rivets, salissure. Elle est volontairement claire et peu contrastée, parce qu'une carte se multiplie avec la couleur du matériau — trop sombre, tous les ennemis deviendraient la même tache noire. Elle est sans doute le changement le plus visible : sans elle, chaque surface est un aplat, et le seul relief vient de la silhouette.
+
+Les coordonnées de texture sont mises à l'échelle de la pièce, sinon un avant-bras de vingt centimètres et un buste de deux mètres porteraient le même nombre de joints. Elles sont choisies par projection sur la face, pas en prenant x et y par réflexe : sinon le dessus d'un bloc reçoit des coordonnées qui varient peu, et la texture s'étire en bavures laites.
+
+**Des cartes de normales.** C'est le changement qui manque le plus, et il ne coûte rien : une seule image de plus, partagée par tous les matériaux.
+
+La carte de couleur ne change que la **teinte** d'une surface ; elle ne change pas la façon dont cette surface répond à une lumière qui bouge. Un joint de panneau peint est une ligne plus sombre ; un joint de panneau **en relief** est une creuse qui renvoie la lumière d'un côté et l'ombre de l'autre. C'est la différence entre un décor imprimé et un décor physique.
+
+La technique : on dessine d'abord un relief en niveaux de gris — blanc en haut, noir en creux — puis on le convertit en normale par un filtre de Sobel. Le blindage a ses joints et ses rivets en bosses ; le sol a ses dalles creuses, avec deux joints sur cinq pour qu'il ne devienne pas un quadrille parfait. Les deux textures sont **partagées** : le test `graphismes.cjs` crée vingt ennemis et vérifie que le nombre d'images en mémoire ne bouge pas, parce qu'une texture regénérée par ennemi mourrait à chaque apparition et ferait saccader le jeu au bout de quelques minutes, sans qu'aucune erreur ne soit levée.
+
+**Le sol.** Il occupe le tiers bas de l'écran en permanence, et c'était le dernier grand aplat du jeu. Rugosité plus haute, métal plus bas : le sol accroche moins la lumière au loin et renvoie davantage de détail quand on le regarde.
+
+**L'atmosphère.** Brouillard un peu plus dense, pour que le fond se retire. Ombres passées de 1024 à **2048** sur ordinateur : c'est le levier le plus gratuit qui reste pour la profondeur, parce qu'une ombre nette donne une indication de distance et de hauteur qu'aucune couleur ne remplace. Coût nul en temps de calcul, la carte d'ombres étant rendue une fois, pas par image.
+
+### Ce que je ne peux pas faire ici
+
+Le projet ne contient qu'un module Three.js, `three.module.min.js`. **Il n'y a pas de post-traitement** : ni bloom, ni profondeur de champ, ni aberration chromatique. Les ajouter demanderait d'embarquer d'autres fichiers, ce qui est une décision de taille, pas une optimisation. C'est le principal levier restant, et il n'est pas dans le budget actuel.
+
+### Ce que ça coûte, et ce que je ne peux pas mesurer
+
+Un robot passe d'environ 350 à **1 588 triangles**. Douze ennemis à l'écran, c'est 19 000 triangles pour toute la scène. C'est modeste pour n'importe quel GPU.
+
+**Je ne peux pas mesurer ton framerate sur téléphone.** Le test `perf-chanfrein.cjs` compte les triangles, chiffre réel, et il refuse volontairement d'affirmer quoi que ce soit sur la fluidité : le navigateur de test bride `requestAnimationFrame` en mode headless, et un seuil posé sur cette mesure serait un mensonge qui décourage sans rien dire du jeu sur un mobile.
 
 ## Les deux classes
 
@@ -51,9 +113,18 @@ Ouvre simplement cette adresse dans un navigateur sur PC. Aucune installation ni
 
 ## Lancer le jeu en local
 
-Le plus simple : double-clique sur le raccourci **Nexus Breach** du Bureau, ou sur **`Lance Nexus Breach.bat`**.
+Le plus simple : double-clique sur **`Lance Nexus Breach.bat`**, dans le dossier du projet. Le lanceur démarre un serveur local et ouvre le navigateur sur **http://localhost:5050**. Pour arrêter le serveur, ferme la fenêtre de lancement. Un serveur est indispensable : `game.js` est un module ES, et le protocole `file://` le bloque pour raisons de CORS.
 
-Le lanceur démarre un serveur local et ouvre automatiquement le navigateur sur **http://localhost:5050**. Pour arrêter le serveur, ferme la fenêtre de lancement. Un serveur est indispensable : `game.js` est un module ES, et le protocole `file://` le bloque pour raisons de CORS.
+### Deux versions du jeu sur cette machine
+
+Il existe une copie de sauvegarde du projet dans `NexusBreach-depot-8917d1a`. Elle a été conservée volontairement : elle contient une version antérieure, avec une classe Tank.
+
+**Les deux copies utilisent le port 5050, et leurs lanceurs étaient identiques.** Rien ne distinguait donc la version qu'on jouait, et c'est la source d'une confusion répétée : on lançait le mauvais dossier, et on croyait que le mode Donjon n'existait pas.
+
+Deux garde-fous règlent le problème :
+
+- **Le lanceur refuse de démarrer si le port est déjà occupé par l'autre copie.** Il va chercher le sélecteur de mode dans la page servie ; s'il est absent, il s'arrête et nomme le dossier fautif. Vérifié dans les deux sens : dépôt en place → refus, rien en place → démarrage normal, bon jeu en place → ouverture.
+- **L'onglet du navigateur porte le mode** : `Nexus Breach // DONJON` ou `Nexus Breach // CAMPAGNE`. Si tu cliques sur DONJON et que le titre ne change pas, tu es dans la mauvaise copie.
 
 Il te faut **Node.js** (https://nodejs.org) — le lanceur s'en sert pour servir `wwwroot` via `serveur.js`, sans aucune dépendance à installer. Si Node est absent mais que le SDK .NET 8 est présent, le lanceur bascule automatiquement sur `dotnet run`.
 
@@ -179,6 +250,9 @@ node tests\hud.cjs             # collisions du HUD en paysage (bureau)
 node tests\hud.cjs --tactile   # idem en mode tactile
 node tests\chevauchement.cjs   # cartes de l'Atelier de 1100 à 360 px
 node tests\roles-ennemis.cjs     # 4 Chargeurs, 4 Tireurs, et l'IA respecte le rôle
+node tests\salle-donjon.cjs      # 120 salles générées : praticables, reproductibles, variées
+node tests\donjon.cjs            # le Donjon : porte, descente, démolition, terminal, deux poches
+node tests\capture-donjon.cjs    # photographies du menu, d'une salle et de la porte
 node tests\equilibrage-tir.mjs   # ce que le tir coûte, en temps de survie
 node tests\tir-distance.cjs      # ce qu'un projectile inflige, mesuré dans le jeu
 node tests\dash-assassin.cjs     # la capacité s'ajoute au dash, elle ne le remplace pas
@@ -243,15 +317,19 @@ Sur ordinateur :
 
 Sur mobile : voir [Jouer sur mobile](#jouer-sur-mobile).
 
+**Dans le Donjon, il n’y a pas de touche de plus.** Le portail et le terminal sont franchissables : on descend et on achète en marchant dessus. C’est volontaire — dans un jeu où on n’a qu’une arme, faire viser une porte serait absurde.
+
 ## Améliorations
 
-Après chaque vague, tu choisis un module parmi trois. Chaque classe a son propre jeu :
+**En campagne**, après chaque vague, tu choisis un module parmi trois. Chaque classe a son propre jeu :
 
-- **Ranger** : Canon amplifié, Gâche rapide, Chargeur étendu, Recharge accélérée, Rayons perforants, Nanites réparateurs, Optique de précision.
+- **Ranger** : Canon amplifié, Gâche rapide, Chargeur étendu, Recharge accélérée, Rayons perforants, Optique de précision. Le Ranger n'a **aucun module de soin** : les Nénithes réparateurs ont été retirés. Ses seules sources de vie sont celles du mode Donjon, à savoir aucune.
 - **Assassin** : Lames affûtées, Tempête jumelle, Voile d’ombre, Sang d’Ombre, Sentence, Allonge, Garde d’ombre.
 - **Communs** : Exosquelette, Propulseurs, Stabilisateurs.
 
 Les modules permanents de l’Atelier deviennent plus chers à chaque niveau.
+
+**Dans le Donjon, il n’y a pas d’écran d’amélioration.** C’est volontaire : la progression passe uniquement par les crédits gagnés aux éliminations et dépensés au terminal trouvé dans la salle. Le joueur peut donc arriver au palier 3 sans avoir pris un seul module.
 
 ## Rééquilibrage
 

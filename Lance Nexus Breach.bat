@@ -8,11 +8,26 @@ echo   NEXUS BREACH - LANCEMENT
 echo   ------------------------------------
 echo.
 
-rem Le serveur fonctionne-t-il deja ?
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:5050/' -TimeoutSec 1 | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
+rem Un serveur est-il deja sur le port ?
+set "PORT=5050"
+set "AUTRE=0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:%PORT%/' -TimeoutSec 1 -ErrorAction Stop; if ($r.Content -match 'data-mode-id') { exit 0 } else { exit 3 } } catch { exit 1 }" >nul 2>&1
+if errorlevel 3 (
+    echo [ERREUR] Le port %PORT% est occupe par AUTRE version du jeu.
+    echo.
+    echo   Celle qui repond ne propose pas le mode DONJON : c'est la copie
+    echo   de sauvegarde, dans :
+    echo     C:\Users\aozaz\NexusBreach-depot-8917d1a
+    echo.
+    echo   Fermez la fenetre noire de l'autre serveur, puis relancez celui-ci.
+    echo.
+    pause
+    exit /b 1
+)
 if not errorlevel 1 (
-    echo Le jeu est deja lance. Ouverture...
-    start "" "http://localhost:5050"
+    echo Le bon jeu tourne deja. Ouverture...
+    start "" "http://localhost:%PORT%"
     exit /b 0
 )
 
@@ -33,7 +48,11 @@ pause
 exit /b 1
 
 :node
-echo   Serveur Node.js demarre.
+echo   Dossier lance : %CD%
+echo   Adresse       : http://localhost:%PORT%
+echo.
+echo   Si l'onglet affiche TANK et pas de mode DONJON, c'est l'autre copie :
+echo   le port etait deja pris. Voir les messages ci-dessus.
 echo.
 node "serveur.js"
 goto :fin

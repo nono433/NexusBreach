@@ -1,0 +1,63 @@
+// Filet de securite contre les ennemis qui n'avancent plus.
+//
+// La grille de navigation pese 1,5 unite. Elle dit si le CENTRE d'une case est
+// libre, pas si le COULOIR qui relie deux cases l'est. Un passage peut donc
+// etre juge franchissable a ses deux extremites et se reveler trop etroit au
+// milieu, une fois le corps de l'ennemi deduit : la collision refuse chaque
+// pas, et l'ennemi reste sur place.
+//
+// C'est une limite de la methode, pas un oubli : on ne rend pas une grille de
+// cette finesse sans payer le CPU, sur un jeu dont le budget est deja
+// juge sur telephone. On corrige donc a la volee, pour l'ennemi qui n'avance
+// plus, plutot que de pretendre que la grille suffit.
+//
+// La detection mesure un DEPLACEMENT, pas une intention : un ennemi immobile
+// parce qu'il charge, parce qu'il est ralenti, ou parce qu'il est a portee
+// d'attaque ne doit pas etre touche. La distance au joueur sert de garde.
+const ENNEMI_ARRET_DISTANCE = 0.16;
+const ENNEMI_ARRET_TEMPS = 1.1;
+const ENNEMI_ARRET_PORTEE = 3.2;
+
+functionzaiLibreEnemy(enemy) {
+  // Un ennemi a portee d'attaque, ou qui n'a pas bouge parce qu'il est
+  // volontairement lent, n'a rien a corriger.
+  const versJoueur = Math.hypot(player.position.x - enemy.root.position.x,
+    player.position.z - enemy.root.position.z);
+  if (versJoueur <= ENNEMI_ARRET_PORTEE) {
+    enemy.arretPosition = null;
+    return;
+  }
+  const x = enemy.root.position.x;
+  const z = enemy.root.position.z;
+  if (enemy.arretPosition === null) {
+    enemy.arretPosition = { x, z, temps: 0 };
+    return;
+  }
+  const deplace = Math.hypot(x - enemy.arretPosition.x, z - enemy.arretPosition.z);
+  if (deplace > ENNEMI_ARRET_DISTANCE) {
+    enemy.arretPosition = { x, z, temps: 0 };
+    return;
+  }
+  enemy.arretPosition.temps += 1 / 60;
+  if (enemy.arretPosition.temps < ENNEMI_ARRET_TEMPS) return;
+
+  // Il est donc bloque. On le replace sur la case de navigation libre et
+  // atteignable la plus proche de sa position : il en repart, et le joueur ne
+  // voit rien, parce que l'ennemi etait de toute facon invisible derriere un
+  // bloc.
+  const index = getNavIndex(x, z).index;
+  let meilleur = index;
+  let meilleurPortee = Infinity;
+  for (let c = 0; c < navWalkable.length; c += 1) {
+    if (!navWalkable[c] || navDistance[c] < 0) continue;
+    const centre = navCellCenters[c];
+    const d = Math.hypot(centre.x - x, centre.z - z);
+    if (d < meilleurPortee) { meilleurPortee = d; meilleur = c; }
+  }
+  const centre = navCellCenters[meilleur];
+  if (!isBlocked(centre.x, centre.z, enemy.radius + 0.05)) {
+    enemy.root.position.x = centre.x;
+    enemy.root.position.z = centre.z;
+  }
+  enemy.arretPosition = { x: centre.x, z: centre.z, temps: 0 };
+}

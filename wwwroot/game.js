@@ -29,6 +29,7 @@ const ui = {
   upgradeCount: document.querySelector('#upgrade-count'),
   upgradeFooter: document.querySelector('#upgrade-footer'),
   waveValue: document.querySelector('#wave-value'),
+  waveLabel: document.querySelector('#wave-label'),
   enemyValue: document.querySelector('#enemy-value'),
   waveBanner: document.querySelector('#wave-banner'),
   waveBannerText: document.querySelector('#wave-banner-text'),
@@ -63,6 +64,8 @@ const ui = {
   shopButton: document.querySelector('#shop-button'),
   gameoverShopButton: document.querySelector('#gameover-shop-button'),
   shopCloseButton: document.querySelector('#shop-close-button'),
+  shopAmeliorations: document.querySelector('#shop-ameliorations'),
+  shopAmeliorationsHeading: document.querySelector('#shop-ameliorations-heading'),
   pointerNote: document.querySelector('.pointer-note'),
   // Commandes tactiles : absentes du DOM sur un poste classique, le code
   // doit donc tolerate un null.
@@ -81,6 +84,8 @@ const ui = {
   hudCredits: document.querySelector('#credits-value'),
   sectorValue: document.querySelector('#sector-value'),
   mapButtons: Array.from(document.querySelectorAll('[data-map-index]')),
+  modeButtons: Array.from(document.querySelectorAll('[data-mode-id]')),
+  modeDescription: document.querySelector('#mode-description'),
   mapDescription: document.querySelector('#map-description'),
   classDescription: document.querySelector('#class-description'),
   classButtons: Array.from(document.querySelectorAll('[data-class-id]')),
@@ -102,6 +107,26 @@ const CONFIG = {
   baseReload: 1.45,
   interactionRange: 70
 };
+
+// Le plus grand corps qui se deplace, borne applique a tous les acteurs.
+//
+// La constante est ici, avec les autres reglages, et non pres du code de
+// deplacement : la navigation l'utilise aussi, pour gonfler les obstacles, et
+// le generateur de salles doit pouvoir garantir la meme chose. Declaree en bas
+// du fichier, elle ne pouvait pas etre lue plus haut, et le detecteur de zone
+// morte le signalait a juste titre.
+//
+// NAV_MARQUE doit lui valoir exactement cette valeur. Si la navigation gonfle
+// moins que le corps, elle declare franchissables des couloirs ou un ennemi
+// large ne passe pas : il entre, la collision refuse chaque pas, et il reste
+// bloque. C'est un bug constate, pas une precaution theorique.
+// La borne elle-meme est declaree avec les reglages, en haut du fichier, parce
+// que la navigation s en sert aussi. Le diagnostic navConcordance() verifie
+// que la marge du generateur et celle-ci valent la meme chose : sans cette
+// verification, les deux derives silencieusement et l on revient au bug.
+const MOUVEMENT_RAYON_MAX = 0.95;
+const NAV_MARQUE = MOUVEMENT_RAYON_MAX;
+
 
 // Appareil tactile : on se base sur le pointeur principal et non sur
 // maxTouchPoints, sinon un portable avec ecran tactile (pointeur fin)
@@ -128,7 +153,12 @@ const PERFORMANCE_PROFILE = (() => {
     mobile,
     lowPower,
     maxPixelRatio: mobile ? 0.85 : lowPower ? 1 : 1.25,
-    shadowMapSize: mobile ? 512 : lowPower ? 512 : 1024,
+    // Ombres a 2048 sur un bureau : le levier le plus gratuit qui reste pour
+      // la profondeur, parce qu une ombre nette donne au joueur une
+      // indication de distance et de hauteur qu aucune couleur ne remplace.
+      // Cout nul en temps de calcul, la carte d ombres etant rendue une
+      // fois pour toutes les surfaces.
+      shadowMapSize: mobile ? 512 : lowPower ? 512 : 2048,
     antialias: !lowPower && !mobile,
     shadows: !lowPower && !mobile,
     targetFps: mobile ? 50 : lowPower ? 50 : 60,
@@ -142,6 +172,8 @@ const PERFORMANCE_PROFILE = (() => {
   };
 })();
 
+// ===========================================================================
+
 const MAP_DEFINITIONS = [
   {
     id: 'nexus',
@@ -150,7 +182,7 @@ const MAP_DEFINITIONS = [
     description: 'Arena initiale du protocole Nexus.',
     background: 0x0b1c28,
     fogColor: 0x0b1c28,
-    fogDensity: 0.02,
+    fogDensity: 0.026,
     hemisphereSky: 0x91e7ff,
     hemisphereGround: 0x25202c,
     keyLight: 0xd8fbff,
@@ -190,7 +222,7 @@ const MAP_DEFINITIONS = [
     description: 'Zone de forge hostile : quatre machines d’élite, plus résistantes et plus mortelles.',
     background: 0x24121e,
     fogColor: 0x24121e,
-    fogDensity: 0.024,
+    fogDensity: 0.03,
     hemisphereSky: 0xffca88,
     hemisphereGround: 0x2a1d28,
     keyLight: 0xffe0c2,
@@ -1334,12 +1366,29 @@ const STORAGE_KEYS = Object.freeze({
   abilities: 'nexus-breach-abilities',
   equippedAbility: 'nexus-breach-equipped-ability',
   map: 'nexus-breach-map',
+  mode: 'nexus-breach-mode',
   saveVersion: 'nexus-breach-save-version',
   restoreNotice: 'nexus-breach-restore-notice'
 });
 
 let state = GAME_STATE.MENU;
 let currentMapIndex = readCurrentMapIndex();
+// Le mode n'est pas une carte de plus : c'est une facon differente de terminer
+// une vague. La campagne garde ses modules et son atelier permanent ; le donjon
+// les supprime tous les deux, et remplace la progression par des credits
+// depenses dans la salle.
+let gameMode = readGameMode();
+// Palier courant du donjon. La vague sert alors de numero de salle : chaque
+// porte franchie augmente les deux.
+let donjonPalier = 0;
+let donjonGraine = 1;
+// L'argent de la descente en cours.
+//
+// Il n'est pas dans le credit global : le confondre ferait de l'atelier
+// permanent une monnaie de donjon. Il ne se remet pas a zero a chaque salle :
+// il se garde tant qu'on ne meurt pas, et c'est ce qui donne un interet a
+// nettoyer vite pour descendre avec de l'argent en poche.
+let donjonCredits = 0;
 let wave = 0;
 let score = 0;
 let kills = 0;
@@ -1426,6 +1475,1150 @@ const NAV_DIRECTIONS = [
   [-1, 0], [1, 0], [0, -1], [0, 1],
   [-1, -1], [1, -1], [-1, 1], [1, 1]
 ];
+
+// Modes de jeu
+// ===========================================================================
+//
+// Un mode n'est pas une carte de plus : c'est une maniere differente de
+// terminer une vague et de progresser. La campagne garde ses trois cartes
+// d'amelioration entre les vagues et les ameliorations permanentes de l'Atelier.
+// Le donjon supprime les deux, et remplace la progression par des credits
+// gagnes a l'elimination et depenses au terminal que l'on trouve dans la salle.
+//
+// Les deux modes partagent le meme tableau de cartes : `donjon` ne fait que
+// changer quand on y entre, ce qui evite de dupliquer la boucle de vagues.
+const GAME_MODES = {
+  campagne: {
+    id: 'campagne',
+    name: 'CAMPAGNE',
+    description: 'Vagues successives, trois modules a chaque fin de vague, atelier permanent entre les parties.',
+    ameliorations: true,
+    permanentes: true,
+    portails: false
+  },
+  donjon: {
+    id: 'donjon',
+    name: 'DONJON',
+    description: 'Des salles procedurales a nettoyer. Un portail s ouvre quand la salle est vide, un terminal d atelier traine parfois. Ni modules, ni atelier permanent : on ameliore ses statistiques avec les credits gagnes en bas, et on les garde jusqu a la mort.',
+    ameliorations: false,
+    permanentes: false,
+    portails: true
+  }
+};
+
+// Generateur de salle.
+//
+// Une salle est une DONNEE : lumières, couverture, piliers, pastilles
+// d'apparition. Rien n'est fige dans le code, donc une salle peut etre tiree au
+// sort a chaque palier. Le generateur ne produit que cette donnee ; la
+// construction des maillages est ailleurs.
+//
+// La contrainte qui compte : la salle doit etre PRATICABLE. Un joueur ne peut
+// pas rester bloque derriere deux blocs. On verifie donc que l'arrivee, la
+// sortie, chaque pastille et le terminal appartiennent a la meme zone
+// connexe, et on retire des obstacles jusqu'a ce que ce soit vrai.
+function generateurAleatoire(graine) {
+  let etat = graine >>> 0;
+  return function () {
+    // mulberry32 : petit, rapide, et surtout reproductible. Deux joueurs
+    // avec la meme graine obtiennent la meme salle, ce qui rend un bug
+    // reproductible au lieu d'etre aleatoire.
+    etat = (etat + 0x6d2b79f5) >>> 0;
+    let t = etat;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Cellules occupantes, avec une marge egale au rayon du joueur : on ne verifie
+// pas qu'on peut marcher sur une case, mais qu'on peut s y tenir.
+function caseLibre(x, z, salle, marge) {
+  for (let i = 0; i < salle.covers.length; i += 1) {
+    const c = salle.covers[i];
+    if (Math.abs(x - c[0]) < c[2] / 2 + marge && Math.abs(z - c[1]) < c[3] / 2 + marge) {
+      return false;
+    }
+  }
+  for (let i = 0; i < salle.pillars.length; i += 1) {
+    const p = salle.pillars[i];
+    const dx = x - p[0];
+    const dz = z - p[1];
+    if (dx * dx + dz * dz < (1.35 + marge) * (1.35 + marge)) return false;
+  }
+  return true;
+}
+
+// Le donjon n existe que si le joueur peut l atteindre, et le portail s il
+// peut sortir. On inonde depuis l arrivee, et on compte les points
+// obligatoires qui doivent tomber dans la meme composante.
+function zoneAtteignable(salle, origine, marge) {
+  const pas = 1;
+  const demi = CONFIG.arenaSize / 2;
+  const cle = (i, j) => j * Math.round(CONFIG.arenaSize / pas) + i;
+  const largeur = Math.round(CONFIG.arenaSize / pas);
+  const visite = new Set();
+  const file = [origine];
+  visite.add(cle(origine[0], origine[1]));
+  while (file.length) {
+    const point = file.pop();
+    const voisins = [[point[0] + 1, point[1]], [point[0] - 1, point[1]],
+      [point[0], point[1] + 1], [point[0], point[1] - 1]];
+    for (const v of voisins) {
+      if (v[0] < 0 || v[1] < 0 || v[0] >= largeur || v[1] >= largeur) continue;
+      const k = cle(v[0], v[1]);
+      if (visite.has(k)) continue;
+      const monde = [v[0] * pas - demi + pas / 2, v[1] * pas - demi + pas / 2];
+      if (!caseLibre(monde[0], monde[1], salle, marge)) continue;
+      visite.add(k);
+      file.push(v);
+    }
+  }
+  return (x, z) => visite.has(cle(
+    Math.round((x + demi - pas / 2) / pas),
+    Math.round((z + demi - pas / 2) / pas)
+  ));
+}
+
+// La salle courante du donjon, et tout ce qu'elle a ajoute au monde.
+//
+// Une salle doit pouvoir etre demolie quand le joueur descend. Le probleme est
+// que les objets ne vivent pas dans un groupe : ils sont empiles dans la scene
+// ET dans quatre tableaux (obstacles, cibles de tir, anneaux, pastilles). On
+// oublie une seule de ces listes et la salle suivante se retrouve avec les
+// obstacles de la precedente : des murs invisibles, et des ennemis qui
+// convergent vers un point mort.
+//
+// Plutot que de reecrire les fonctions de construction, on mesure ce que
+// chacune AJOUTE. C'est ce que vaut cette fonction : le nombre d enfants de la
+// scene avant et apres l'appel. Elle ne suppose rien de l'implementation, donc
+// si addCover rajoute un jour une lueur, elle sera vue.
+const salleCourante = {
+  maillages: [],
+  obstacles: [],
+  cibles: [],
+  anneaux: [],
+  pastilles: [],
+  lumiere: [],
+  portail: null,
+  terminal: null,
+  ouverte: false
+};
+
+function mesurerAjout(ajouter) {
+  const avantScene = scene.children.length;
+  const avantObstacles = obstacles.length;
+  const avantCibles = arenaTargets.length;
+  const avantAnneaux = animatedRings.length;
+  const avantPastilles = spawnPads.length;
+  ajouter();
+  for (let i = avantScene; i < scene.children.length; i += 1) {
+    salleCourante.maillages.push(scene.children[i]);
+  }
+  for (let i = avantObstacles; i < obstacles.length; i += 1) {
+    salleCourante.obstacles.push(obstacles[i]);
+  }
+  for (let i = avantCibles; i < arenaTargets.length; i += 1) {
+    salleCourante.cibles.push(arenaTargets[i]);
+  }
+  for (let i = avantAnneaux; i < animatedRings.length; i += 1) {
+    salleCourante.anneaux.push(animatedRings[i]);
+  }
+  for (let i = avantPastilles; i < spawnPads.length; i += 1) {
+    salleCourante.pastilles.push(spawnPads[i]);
+  }
+}
+
+function viderTableau(tabla, valeurs) {
+  for (const valeur of valeurs) {
+    const index = tabla.indexOf(valeur);
+    if (index >= 0) tabla.splice(index, 1);
+  }
+}
+
+// Demolition complete. Le champ de navigation est reconstruit juste apres :
+// sans lui, les ennemis continueraient de contourner une salle qui n'existe
+// plus.
+function demolirSalle() {
+  for (const maillage of salleCourante.maillages) {
+    scene.remove(maillage);
+    maillage.traverse((enfant) => {
+      if (enfant.geometry) enfant.geometry.dispose();
+      // Les materiaux sont partages entre plusieurs maillages d une meme
+      // salle, liseres et colliers : les supprimer ici casserait ceux qui
+      // les partagent. Une salle en cree quelques dizaines, et le navigateur
+      // les recycle. C est le prix d une salle que l on peut demonter.
+    });
+  }
+  for (const lumiere of salleCourante.lumiere) scene.remove(lumiere);
+  viderTableau(obstacles, salleCourante.obstacles);
+  viderTableau(arenaTargets, salleCourante.cibles);
+  viderTableau(animatedRings, salleCourante.anneaux);
+  viderTableau(spawnPads, salleCourante.pastilles);
+  salleCourante.maillages.length = 0;
+  salleCourante.obstacles.length = 0;
+  salleCourante.cibles.length = 0;
+  salleCourante.anneaux.length = 0;
+  salleCourante.pastilles.length = 0;
+  salleCourante.lumiere.length = 0;
+  salleCourante.portail = null;
+  salleCourante.terminal = null;
+  salleCourante.ouverte = false;
+  // La grille est invalidee, pas seulement marquee a reconstruire. Sans cela,
+  // le code qui la consulte entre la demolition et la construction voit des
+  // cases libres la ou il y a un mur, et valide des positions impossibles.
+  navWalkable.fill(0);
+  navDistance.fill(-1);
+  syncRaycastTargets();
+  navTimer = 0;
+}
+
+// Construit une salle du donjon dans la scene, et son portail et son terminal.
+//
+// Le portail est VERROUILLE tant que la salle compte un ennemi. Ce n'est pas
+// decoratif : c'est la condition de fin de salle, et le joueur doit le voir
+// vermouillé pour savoir qu'il a encore du travail.
+const COULEUR_PORTAIL_FERME = 0x3a4a52;
+const COULEUR_PORTAIL_OUVERT = 0x62ff9a;
+
+function construireSalle(salle) {
+  demolirSalle();
+  const map = MAP_DEFINITIONS[currentMapIndex];
+  const materiauPilier = new THREE.MeshStandardMaterial({
+    color: map.wallColor,
+    roughness: 0.42,
+    metalness: 0.64
+  });
+
+  for (const [x, z, largeur, profondeurBloc, hauteur, accent] of salle.covers) {
+    mesurerAjout(() => construireBloc(x, z, largeur, profondeurBloc, hauteur, accent));
+  }
+  salle.pillars.forEach(([x, z], index) => {
+    mesurerAjout(() => {
+      const pilier = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.05, 1.25, 5.8, 8), materiauPilier);
+      pilier.position.set(x, 2.9, z);
+      pilier.castShadow = PERFORMANCE_PROFILE.shadows;
+      pilier.receiveShadow = PERFORMANCE_PROFILE.shadows;
+      pilier.userData.solid = true;
+      scene.add(pilier);
+      arenaTargets.push(pilier);
+      obstacles.push({ x, z, radius: 1.35, type: 'circle' });
+      const collier = new THREE.Mesh(
+        new THREE.TorusGeometry(1.08, 0.075, 8, 28),
+        new THREE.MeshStandardMaterial({
+          color: 0x02080a,
+          emissive: index % 2 ? map.alternateEdge : map.wallEdge,
+          emissiveIntensity: 2
+        }));
+      collier.rotation.x = Math.PI / 2;
+      collier.position.set(x, 4.5, z);
+      scene.add(collier);
+      animatedRings.push({ mesh: collier, speed: index % 2 ? -0.25 : 0.35, axis: 'y' });
+    });
+  });
+  salle.spawnPads.forEach(([x, z, rotation]) => {
+    mesurerAjout(() => construirePastille(x, z, rotation, map));
+  });
+
+  for (const lumiere of salle.lights) {
+    const halo = new THREE.PointLight(
+      lumiere.color, lumiere.intensity, lumiere.distance, 2);
+    halo.position.set(lumiere.x, lumiere.y, lumiere.z);
+    scene.add(halo);
+    salleCourante.lumiere.push(halo);
+  }
+
+  construirePortail(salle.portail, map);
+  if (salle.terminal) construireTerminal(salle.terminal, map);
+
+  // Le champ de navigation est reconstruit ICI, tout de suite, et pas au
+  // prochain passage dans updateEnemies.
+  //
+  // Mettre seulement navTimer a zero suffisait pour l'affichage, mais la
+  // grille restait celle de la salle precedente pendant toute la frame. Or
+  // findSpawnPosition la consulte pour choisir ou naitre un ennemi, et elle
+  // lisait donc un decor gone : elle validait des positions situes dans les
+  // blocs de la nouvelle salle. L'ennemi y naissait, sa cellule etait
+  // inatteignable, et il ne venait jamais. C'est le blocage le plus tenace
+  // observe, et il naissait d'une ligne de trop.
+  rebuildFlowField();
+  navTimer = 0;
+  syncRaycastTargets();
+}
+
+function construireBloc(x, z, largeur, profondeurBloc, hauteur, accent) {
+  const materiau = new THREE.MeshStandardMaterial({
+    color: 0x162833, roughness: 0.48, metalness: 0.6
+  });
+  const bloc = new THREE.Mesh(new THREE.BoxGeometry(largeur, hauteur, profondeurBloc), materiau);
+  bloc.position.set(x, hauteur / 2, z);
+  bloc.castShadow = PERFORMANCE_PROFILE.shadows;
+  bloc.receiveShadow = PERFORMANCE_PROFILE.shadows;
+  bloc.userData.solid = true;
+  scene.add(bloc);
+  arenaTargets.push(bloc);
+  obstacles.push({ x, z, width: largeur, depth: profondeurBloc, type: 'rect' });
+
+  const lisiere = new THREE.Mesh(
+    new THREE.BoxGeometry(largeur * 0.86, 0.055, profondeurBloc * 0.86),
+    new THREE.MeshStandardMaterial({ color: 0x03080a, emissive: accent, emissiveIntensity: 1.7 }));
+  lisiere.position.set(x, hauteur + 0.04, z);
+  scene.add(lisiere);
+}
+
+function construirePastille(x, z, rotation, map) {
+  const pastille = new THREE.Group();
+  pastille.position.set(x, 0.025, z);
+  pastille.rotation.y = rotation;
+  const base = new THREE.Mesh(
+    new THREE.CircleGeometry(1.55, 6),
+    new THREE.MeshBasicMaterial({
+      color: 0x061017, transparent: true, opacity: 0.78, side: THREE.DoubleSide
+    }));
+  base.rotation.x = -Math.PI / 2;
+  pastille.add(base);
+  const anneau = new THREE.Mesh(
+    new THREE.TorusGeometry(1.25, 0.055, 6, 6),
+    new THREE.MeshBasicMaterial({ color: map.coreColor, transparent: true, opacity: 0.8 }));
+  anneau.rotation.x = Math.PI / 2;
+  anneau.position.y = 0.035;
+  pastille.add(anneau);
+  const interne = new THREE.Mesh(
+    new THREE.TorusGeometry(0.72, 0.025, 5, 6),
+    new THREE.MeshBasicMaterial({ color: map.coreAccent, transparent: true, opacity: 0.8 }));
+  interne.rotation.x = Math.PI / 2;
+  interne.position.y = 0.045;
+  pastille.add(interne);
+  scene.add(pastille);
+  spawnPads.push(new THREE.Vector3(x, 0, z));
+  animatedRings.push({ mesh: anneau, speed: 0.4, axis: 'z' });
+  animatedRings.push({ mesh: interne, speed: -0.65, axis: 'y' });
+}
+
+// Le portail est une porte, pas une piece au sol : l'anneau est VERTICAL, comme
+// un cadre qu on traverse.
+//
+// Il etait pose a plat, comme un tapis lumineux. Debout a hauteur d'homme, un
+// tore couche se voit de champ : la capture du mode ne montrait qu'un trait
+// gris, et le joueur pouvait nettoyer toute la salle sans voir pourquoi la
+// sortie ne s'ouvrait pas. Une porte qu on ne voit pas n'est pas une porte.
+function construirePortail(position, map) {
+  mesurerAjout(() => {
+    const groupe = new THREE.Group();
+    groupe.position.set(position[0], 0, position[1]);
+    const materiau = new THREE.MeshStandardMaterial({
+      color: 0x08141a,
+      emissive: COULEUR_PORTAIL_FERME,
+      emissiveIntensity: 1.6,
+      roughness: 0.4
+    });
+    const anneau = new THREE.Mesh(new THREE.TorusGeometry(1.45, 0.14, 8, 30), materiau);
+    anneau.position.y = 1.65;
+    groupe.add(anneau);
+    // Un second anneau, plus fin et plus haut, donne de l'epaisseur. Sans lui,
+    // une porte vue de loin se reduit a un trait.
+    const montant = new THREE.Mesh(
+      new THREE.TorusGeometry(1.78, 0.05, 6, 30),
+      new THREE.MeshStandardMaterial({
+        color: 0x03080a,
+        emissive: COULEUR_PORTAIL_FERME,
+        emissiveIntensity: 0.9
+      }));
+    montant.position.y = 1.65;
+    groupe.add(montant);
+    // Le voile, lui, reste le plan de la porte, face au joueur.
+    const voile = new THREE.Mesh(
+      new THREE.CircleGeometry(1.41, 26),
+      new THREE.MeshBasicMaterial({
+        color: COULEUR_PORTAIL_FERME,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      }));
+    voile.position.y = 1.65;
+    groupe.add(voile);
+    // Un halo au sol, lui, dit ou poser les pieds : c'est ce qui distingue la
+    // porte du simple mur lumineux vu de loin.
+    const empreinte = new THREE.Mesh(
+      new THREE.CircleGeometry(1.45, 24),
+      new THREE.MeshBasicMaterial({
+        color: COULEUR_PORTAIL_FERME,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      }));
+    empreinte.rotation.x = -Math.PI / 2;
+    empreinte.position.y = 0.05;
+    groupe.add(empreinte);
+    scene.add(groupe);
+    salleCourante.portail = {
+      groupe,
+      materiau,
+      voile,
+      montant,
+      x: position[0],
+      z: position[1]
+    };
+    salleCourante.maillages.push(groupe);
+  });
+}
+
+function construireTerminal(position, map) {
+  mesurerAjout(() => {
+    const groupe = new THREE.Group();
+    groupe.position.set(position[0], 0, position[1]);
+    const socle = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 0.9, 1.5),
+      new THREE.MeshStandardMaterial({ color: 0x101c26, roughness: 0.5, metalness: 0.6 }));
+    socle.position.y = 0.45;
+    groupe.add(socle);
+    const ecran = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.75, 0.12),
+      new THREE.MeshStandardMaterial({
+        color: 0x03080a, emissive: map.coreAccent, emissiveIntensity: 2.4
+      }));
+    ecran.position.set(0, 1.45, 0);
+    ecran.rotation.x = -0.24;
+    groupe.add(ecran);
+    const halo = new THREE.PointLight(map.coreAccent, 9, 7, 2);
+    halo.position.set(0, 1.5, 0);
+    groupe.add(halo);
+    scene.add(groupe);
+    salleCourante.terminal = {
+      groupe,
+      ecran,
+      halo,
+      x: position[0],
+      z: position[1]
+    };
+    salleCourante.maillages.push(groupe);
+  });
+}
+
+// Les deux poches.
+//
+// L argent global achete ce qui survit aux parties : c'est l atelier permanent.
+// L argent de run n existe que dans la salle en cours, et c'est la seule
+// monnaie du donjon. Les separer n'est pas une precaution, c'est le mode
+// lui-meme : si le donjon debourseait l atelier permanent, il statuerait
+// l'exact contraire de ce qu il promet.
+function argentDisponible() {
+  return gameMode === 'donjon' ? donjonCredits : credits;
+}
+
+function peutDepenser(montant) {
+  return argentDisponible() >= montant;
+}
+
+function depenserArgent(montant) {
+  if (montant <= 0) return;
+  if (gameMode === 'donjon') donjonCredits = Math.max(0, donjonCredits - montant);
+  else credits = Math.max(0, credits - montant);
+}
+
+// Ce que le terminal propose. Dans le donjon, ni la classe ni les modules
+// d atelier : la classe se choisit au menu, et l atelier permanent est precisement
+// ce que le mode supprime. Les secciones sont retirees de la boutique plutot
+// que desactivees, pour que le joueur ne passe pas son temps devant un
+// panneau mort.
+function sectionsBoutique() {
+  if (gameMode !== 'donjon') {
+    return {
+      classes: true, armes: true, capacites: true, modules: true, ameliorations: false
+    };
+  }
+  // Le donjon ne vend ni classe, ni capacite, ni module d'atelier. A la place,
+  // des ameliorations de statistiques : sans elles, la seule chose a faire de
+  // son argent etait changer d'arme, et un joueur qui n'en trouve pas n'avait
+  // aucune raison de descendre.
+  return {
+    classes: false, armes: true, capacites: false, modules: false, ameliorations: true
+  };
+}
+
+// Interactions du donjon : franchir la porte, toucher le terminal.
+//
+// Les deux sont des zones de contact, pas des objets a viser. Le joueur n'a
+// qu'une arme, la tienne : lui faire viser une porte serait absurde. On prend
+// donc la distance au sol, avec une marge assez large pour qu'on ne rate pas la
+// porte en passant a cote en courant.
+//
+// Cette fonction ne teste pas l'etat de jeu : c'est l'appelant qui le fait.
+// GAME_STATE est declare plus loin dans le fichier, et le detecteur de zone
+// morte a raison de refuser qu une constante soit lue avant sa declaration,
+// meme depuis une fonction qui n'est appelee qu'en partie. Le test reste donc
+// dehors, ou il n'a rien a voir.
+const PORTEIL_PORTEE = 2.6;
+const TERMINAL_PORTEE = 2.2;
+
+function majDonjon() {
+  if (terminalDelai > 0) terminalDelai -= 1 / 60;
+  const x = player.position.x;
+  const z = player.position.z;
+
+  if (salleCourante.ouverte && salleCourante.portail) {
+    const dx = x - salleCourante.portail.x;
+    const dz = z - salleCourante.portail.z;
+    if (dx * dx + dz * dz < PORTEIL_PORTEE * PORTEIL_PORTEE) {
+      audio.reload();
+      salleSuivante();
+      return;
+    }
+  }
+
+  if (salleCourante.terminal && terminalDelai <= 0) {
+    const dx = x - salleCourante.terminal.x;
+    const dz = z - salleCourante.terminal.z;
+    if (dx * dx + dz * dz < TERMINAL_PORTEE * TERMINAL_PORTEE) {
+      // Le terminal ouvre le meme magasin que le menu, et closeShop rend la
+      // main a la partie : c'etait deja prevu, il suffisait de l'appeler.
+      ouvrirBoutiqueDonjon();
+    }
+  }
+}
+
+// Le terminal ne doit pas s'actionner deux fois : on repousse le joueur d'un pas
+// a l'ouverture, sinon il reste colle et le magasin se referme aussitot qu'il
+// est ouvert.
+//
+// Le cas difficile est la distance exactement nulle. Math.hypot(0, 0) vaut 0, et
+// le garde-fou classique `|| 1` transforme ce zero en 1 : le vecteur de recul
+// devient 0/1, donc nul, et le joueur ne bouge pas du tout. C'est precisement
+// le cas le plus probable, celui ou l on marche droit sur le terminal. Le
+// joueur restait alors colle, et le magasin se rouvrait a la frame suivante
+// apres avoir ete ferme. Le test du donjon l'a vu : l'etat restait a "shop".
+function repousserDuTerminal() {
+  const terminal = salleCourante.terminal;
+  if (!terminal) return;
+  const dx = player.position.x - terminal.x;
+  const dz = player.position.z - terminal.z;
+  const distance = Math.hypot(dx, dz);
+  let ux = 0;
+  let uz = 0;
+  if (distance > 0.001) {
+    ux = dx / distance;
+    uz = dz / distance;
+  } else {
+    // Pile sur le terminal : il n'y a pas de direction a suivre, alors on
+    // recule vers le centre de l'arene, qui est toujours libre.
+    const cx = -terminal.x;
+    const cz = -terminal.z;
+    const versCentre = Math.hypot(cx, cz) || 1;
+    ux = cx / versCentre;
+    uz = cz / versCentre;
+  }
+  if (Math.hypot(dx, dz) >= TERMINAL_PORTEE) return;
+  player.position.x = terminal.x + ux * (TERMINAL_PORTEE + 0.6);
+  player.position.z = terminal.z + uz * (TERMINAL_PORTEE + 0.6);
+}
+
+// Delai avant que le terminal puisse rouvrir la boutique.
+//
+// Meme avec le recul qui fonctionne, un contact suffit : le moindre
+// frôlement, ou une correction de collision, suffirait a rouvrir le magasin que
+// le joueur vient de fermer. Ce n est pas un detail cosmétique, c'est un magasin
+// qui se ferme tout seul, et le joueur croit avoir perdu ses credits.
+const TERMINAL_DELAI = 1.1;
+let terminalDelai = 0;
+
+// Ouverte depuis le donjon, pas depuis le menu : c est ce qui arme le delai.
+function ouvrirBoutiqueDonjon() {
+  openShop();
+  repousserDuTerminal();
+  terminalDelai = TERMINAL_DELAI;
+}
+
+// Tire une salle complete pour un palier du donjon.
+//
+// L'algorithme refuse de produire une salle injouable. Il pose des obstacles au
+// hasard, puis verifie que tout ce qui compte est d'un seul tenant : l'arrivee du
+// joueur, chaque pastille d'apparition, le portail, et le terminal s'il y en a
+// un. Si un point est coupe, on retire un obstacle au hasard et on recommence,
+// jusqu'a un nombre d'essais borne. Au pire, on renvoie une salle presque
+// vide : une salle moche vaut mieux qu'une salle dont on ne sort pas.
+// Les ameliorations de stats du donjon.
+//
+// Elles n'existent que la : ni capacite, ni module d'atelier. C'est la
+// consequence directe de la reponse a la question posee avant la
+// construction du mode. Une boutique ou on ne peut QUE changer d'arme, sans
+// pouvoir rendre son personnage plus fort, oblige a choisir entre un achat et
+// sa survie ; une ou l'on ameliore ses statistiques donne une raison de
+// descendre meme sans trouver d'arme.
+//
+// Elles valent pour la partie en cours et disparaissent avec elle. Rien n'est
+// ecrit dans la sauvegarde, et rien ne se transporte en campagne : c'est la
+// difference entre depenser dans le donjon et changer l'equipement d'atelier.
+//
+// Les effets sont ADDITIFS et appliques par applyUpgradeStats, comme les
+// modules de vague. Pas de cascade : un niveau a 5 % donne 20 % a cinq
+// niveaux, pas 1,05^5. La distinction a deja coute une partie entiere.
+const DONJON_AMELIORATIONS = [
+  {
+    id: 'degats',
+    nom: 'CANON SURCHARGE',
+    court: 'DEGATS',
+    description: '+12 % de degats par niveau.',
+    max: 6,
+    base: 90,
+    croissance: 1.55,
+    couleur: 0xff4e28
+  },
+  {
+    id: 'cadence',
+    nom: 'GACHETTE ENTRETENUE',
+    court: 'CADENCE',
+    description: '+8 % de cadence par niveau.',
+    max: 6,
+    base: 110,
+    croissance: 1.55,
+    couleur: 0xffd166
+  },
+  {
+    id: 'vie',
+    nom: 'PLAQUE DE SECOURS',
+    court: 'INTEGRITE',
+    description: '+15 points de vie maximum, et autant de soin immediat.',
+    max: 6,
+    base: 80,
+    croissance: 1.5,
+    couleur: 0x62ff9a
+  },
+  {
+    id: 'recharge',
+    nom: 'CHARGEUR SOUPLE',
+    court: 'RECHARGE',
+    description: '-10 % de temps de recharge par niveau.',
+    max: 4,
+    base: 100,
+    croissance: 1.7,
+    couleur: 0x00eaff
+  },
+  {
+    id: 'chargeur',
+    nom: 'TANCHE ELARGIE',
+    court: 'CHARGEUR',
+    description: '+6 munitions par niveau.',
+    max: 4,
+    base: 95,
+    croissance: 1.65,
+    couleur: 0x9a4eff
+  },
+  {
+    id: 'vitesse',
+    nom: 'SERVOS LEGERS',
+    court: 'VITESSE',
+    description: '+6 % de vitesse de deplacement par niveau.',
+    max: 4,
+    base: 85,
+    croissance: 1.6,
+    couleur: 0x4ecdc4
+  },
+  {
+    id: 'reduction',
+    nom: 'BLINDAGE LEGER',
+    court: 'BLINDAGE',
+    description: '-8 % de degats encaisses par niveau, plafonne a 40 %.',
+    max: 5,
+    base: 120,
+    croissance: 1.6,
+    couleur: 0x8899aa
+  },
+  {
+    id: 'perforation',
+    nom: 'TIR PERFORANT',
+    court: 'PERFORATION',
+    description: '+1 ennemi traverse par niveau.',
+    max: 3,
+    base: 200,
+    croissance: 1.9,
+    couleur: 0xff2b85
+  }
+];
+
+const DONJON_VALEURS = {
+  degats: 0.12,
+  cadence: 0.08,
+  vie: 15,
+  recharge: 0.10,
+  chargeur: 6,
+  vitesse: 0.06,
+  reduction: 0.08,
+  reductionPlafond: 0.40,
+  perforation: 1
+};
+
+// Le cout du prochain niveau. La courbe est geometrique : le premier niveau
+// reste abordable, le cinquieme faitReflecter si on a bien choisi ses
+// priorites.
+// Une icone par amelioration. Dessinees a la main plutot que generes : elles
+// sont huit, elles ne changeront pas, et une etiquette generee par le code
+// ressemblerait a un pave sans signification.
+const ICONES_AMELIORATION = {
+  degats: '<path d="M14 50h10V28H14zM30 50h10V16H30zM46 50h10V6H46z"/>',
+  cadence: '<path d="M32 6 40 24H24zM32 58 24 40h16zM6 32 24 24v16zM58 32 40 40V24z"/>',
+  vie: '<path d="M32 56 8 32a13 13 0 0 1 18-18h12a13 13 0 0 1 18 18z"/>',
+  recharge: '<path d="M48 10 18 34h14l-4 20 30-26H40z"/>',
+  chargeur: '<path d="M18 12h28v34a6 6 0 0 1-6 6H24a6 6 0 0 1-6-6zM24 4h16v8H24z"/>',
+  vitesse: '<path d="M8 44h14l8-24 8 32 8-20 4 12h8"/>',
+  reduction: '<path d="M32 4 52 12v18c0 14-10 24-20 30C22 54 12 44 12 30V12z"/>',
+  perforation: '<path d="M6 32h34M40 20l16 12-16 12zM6 20h10v24H6z"/>'
+};
+
+const ICONE_AMELIORATION_DEGATS = '<path d="M14 50h10V28H14zM30 50h10V16H30zM46 50h10V6H46z"/>';
+
+function iconeAmelioration(id) {
+  return ICONES_AMELIORATION[id] || ICONE_AMELIORATION_DEGATS;
+}
+
+function coutAmeliorationDonjon(definition, niveauActuel) {
+  return Math.round(definition.base * Math.pow(definition.croissance, niveauActuel));
+}
+
+function ameliorationsDonjonPossedees() {
+  const joueur = player.donjon || {};
+  const total = DONJON_AMELIORATIONS.reduce((somme, d) => somme + (joueur[d.id] || 0), 0);
+  return { joueur, total };
+}
+
+// Acheter un niveau d'amelioration de salle.
+//
+// Le cout est debite de l'argent de RUN, jamais du credit d'atelier : c'est la
+// regle des deux portefeuilles, et une amelioration achetee en argent de run
+// deviendrait un module permanent. Les stats sont recalculees aussitot, sinon
+// le joueur paie et ne voit rien changer.
+function acheterAmeliorationDonjon(id) {
+  const definition = DONJON_AMELIORATIONS.find((d) => d.id === id);
+  if (!definition || state !== GAME_STATE.SHOP) return false;
+  if (!player.donjon) player.donjon = {};
+  const niveau = player.donjon[id] || 0;
+  if (niveau >= definition.max) return false;
+  const cout = coutAmeliorationDonjon(definition, niveau);
+  if (!peutDepenser(cout)) return false;
+  depenserArgent(cout);
+  player.donjon[id] = niveau + 1;
+  applyUpgradeStats();
+  // La vie qui augmente doit se sentir tout de suite, sinon l'achat de
+  // INTEGRITE parait sans effet. applyUpgradeStats s en charge deja.
+  updateCreditsUI();
+  renderShop();
+  return true;
+}
+
+const ACCENTS_SALLE = [0x00eaff, 0xff4e28, 0x9a4eff, 0xffd166, 0xff2b85, 0x62ff9a];
+
+// Le joueur apparait toujours ici, quel que soit le palier. Cette zone est
+// reservee : aucun obstacle ne peut naitre dedans.
+//
+// C etait un vrai defaut, trouve par le test : avant cette reservation, une
+// salle sur sept environ faisait apparaitre le joueur DANS un bloc solide. Le
+// joueur se retrouvait coincer sans comprendre pourquoi, et rien dans le jeu
+// ne le signalait.
+const ARRIVEE = { x: 0, z: 10, rayon: 5 };
+
+// Verification finale, sur le VRAI modele de navigation du jeu.
+//
+// La premiere version Promettait la connectivite sur une grille de 1,0 unite,
+// avec une marge de 0,75 et sans regle de coupe de coin. Le jeu, lui,
+// navigue sur une grille de 1,5 avec une marge de 0,78 et n'autorise une
+// diagonale que si les deux orthogonales sont libres. Les deux modeles ne
+// coincident pas : une salle pouvait passer la verification du generateur et
+// se retrouver, dans le jeu, avec des zones que le joueur ne peut pas atteindre.
+//
+// Consequence directe, et c'est ce que le joueur voyait : un ennemi qui
+// apparait dans une de ces zones a navDistance negative. Or getFlowDirection
+// ne retient que les cases ATTEIGNABLES, et cherche donc la plus proche en
+// traversant l'arene. L'ennemi se dirige vers un point derriere un mur,
+// moveEntity refuse chaque pas, et il presse contre l'obstacle indefiniment.
+//
+// On rejoue donc exactement les regles de rebuildFlowField. Pas une version
+// voisine : la version identique.
+const NAV_TAILLE = 1.5;
+const NAV_NB = 30;
+
+// La marge dont le generateur gonfle les obstacles.
+//
+// Elle ne peut pas valoir MOUVEMENT_RAYON_MAX par reference : cette constante
+// est declaree bien plus loin, et le detecteur de zone morte refuse, a juste
+// titre, qu une constante soit lue avant sa declaration. Ce projet a deja perdu
+// des parties entieres a ce genre de reference.
+//
+// Elle ne peut pas non plus diverger de la vraie. Une divergence rendrait la
+// garantie de connectivite fausse : le generateur validerait des salles que
+// l'IA ne sait pas parcourir. C'est exactement ce que le test verifie, via
+// navConcordance() : les deux valeurs doivent rester egales, sinon le test
+// echoue et le defaut est nomme.
+const NAV_MARQUE_GENERATEUR = 0.95;
+
+// La liste des huit directions, en double de NAV_DIRECTIONS.
+//
+// Elle ne peut pas etre reprise : le generateur est declare avant elle, et le
+// detecteur de zone morte refuse, a juste titre, qu une constante soit lue
+// avant sa declaration. Ce projet a deja perdu des parties entieres a ce
+// genre de reference.
+//
+// Une duplication peut mentir, elle. Elle ne ment pas ici : elle est verifiee.
+// navConcordance() compare les deux listes et les test du donjon echoue si
+// elles divergent. Si la navigation du jeu change un jour, le test le dit au
+// lieu de laisser le generateur produire des salles que l'IA ne sait pas
+// parcourir.
+const NAV_DIRECTIONS_GENERATEUR = [
+  [-1, 0], [1, 0], [0, -1], [0, 1],
+  [-1, -1], [1, -1], [-1, 1], [1, 1]
+];
+
+// Les deux listes de directions, et la marge du generateur, decrivent-elles la
+// meme chose que le jeu ?
+//
+// Cette fonction est declaree APRES les constantes qu'elle compare : c'est le
+// seul endroit du fichier ou c'est possible, et c'est aussi le seul endroit
+// qui ait besoin de le voir. Elle ne fait rien d'autre que nommer une
+// divergence.
+function navConcordance() {
+  if (NAV_DIRECTIONS.length !== NAV_DIRECTIONS_GENERATEUR.length) return false;
+  for (let i = 0; i < NAV_DIRECTIONS.length; i += 1) {
+    if (NAV_DIRECTIONS[i][0] !== NAV_DIRECTIONS_GENERATEUR[i][0]) return false;
+    if (NAV_DIRECTIONS[i][1] !== NAV_DIRECTIONS_GENERATEUR[i][1]) return false;
+  }
+  return NAV_MARQUE === MOUVEMENT_RAYON_MAX
+    && NAV_MARQUE_GENERATEUR === MOUVEMENT_RAYON_MAX;
+}
+
+function navCelluleBloquee(x, z, salle) {
+  const limite = CONFIG.arenaSize / 2 - 0.45;
+  if (Math.abs(x) > limite || Math.abs(z) > limite) return true;
+  for (let i = 0; i < salle.covers.length; i += 1) {
+    const c = salle.covers[i];
+    if (Math.abs(x - c[0]) < c[2] / 2 + NAV_MARQUE_GENERATEUR
+      && Math.abs(z - c[1]) < c[3] / 2 + NAV_MARQUE_GENERATEUR) return true;
+  }
+  for (let i = 0; i < salle.pillars.length; i += 1) {
+    const p = salle.pillars[i];
+    const dx = x - p[0];
+    const dz = z - p[1];
+    const portee = 1.35 + NAV_MARQUE_GENERATEUR;
+    if (dx * dx + dz * dz < portee * portee) return true;
+  }
+  return false;
+}
+
+function navIndex(x, z) {
+  const colonne = Math.max(0, Math.min(NAV_NB - 1,
+    Math.floor((x + CONFIG.arenaSize / 2) / NAV_TAILLE)));
+  const ligne = Math.max(0, Math.min(NAV_NB - 1,
+    Math.floor((z + CONFIG.arenaSize / 2) / NAV_TAILLE)));
+  return ligne * NAV_NB + colonne;
+}
+
+function navCentre(index) {
+  const colonne = index % NAV_NB;
+  const ligne = Math.floor(index / NAV_NB);
+  return {
+    x: (colonne + 0.5) * NAV_TAILLE - CONFIG.arenaSize / 2,
+    z: (ligne + 0.5) * NAV_TAILLE - CONFIG.arenaSize / 2
+  };
+}
+
+// Les cases atteignables depuis l'arrivee, selon les regles du jeu.
+function zoneAtteignableNav(salle, origine) {
+  const marchable = new Uint8Array(NAV_NB * NAV_NB);
+  for (let index = 0; index < marchable.length; index += 1) {
+    const centre = navCentre(index);
+    if (!navCelluleBloquee(centre.x, centre.z, salle)) marchable[index] = 1;
+  }
+
+  let depart = navIndex(origine[0], origine[1]);
+  if (!marchable[depart]) {
+    // Le joueur serait lui-meme dans un mur : on part de la case libre la plus
+    // proche, exactement comme rebuildFlowField.
+    let meilleur = -1;
+    let meilleurEcart = Infinity;
+    for (let index = 0; index < marchable.length; index += 1) {
+      if (!marchable[index]) continue;
+      const centre = navCentre(index);
+      const d = Math.hypot(centre.x - origine[0], centre.z - origine[1]);
+      if (d < meilleurEcart) { meilleurEcart = d; meilleur = index; }
+    }
+    if (meilleur < 0) return () => false;
+    depart = meilleur;
+  }
+
+  const distance = new Int32Array(NAV_NB * NAV_NB).fill(-1);
+  const file = [depart];
+  distance[depart] = 0;
+  while (file.length) {
+    const courant = file.pop();
+    const colonne = courant % NAV_NB;
+    const ligne = Math.floor(courant / NAV_NB);
+    for (let d = 0; d < NAV_DIRECTIONS_GENERATEUR.length; d += 1) {
+      const dc = NAV_DIRECTIONS_GENERATEUR[d][0];
+      const dl = NAV_DIRECTIONS_GENERATEUR[d][1];
+      const nc = colonne + dc;
+      const nl = ligne + dl;
+      if (nc < 0 || nc >= NAV_NB || nl < 0 || nl >= NAV_NB) continue;
+      const suivant = nl * NAV_NB + nc;
+      if (!marchable[suivant] || distance[suivant] !== -1) continue;
+      if (dc !== 0 && dl !== 0) {
+        if (!marchable[ligne * NAV_NB + nc] || !marchable[nl * NAV_NB + colonne]) continue;
+      }
+      distance[suivant] = distance[courant] + 1;
+      file.push(suivant);
+    }
+  }
+
+  return (x, z) => distance[navIndex(x, z)] >= 0;
+}
+
+function genererSalle(graine, profondeur) {
+  const alea = generateurAleatoire(graine);
+  const demi = CONFIG.arenaSize / 2 - 3;
+  const salle = {
+    covers: [],
+    pillars: [],
+    spawnPads: [],
+    lights: [],
+    portail: null,
+    terminal: null
+  };
+
+  // Un bloc ne peut pas mordre dans la zone d'arrivee. On le repousse plutot
+  // que de l'abandonner : une salle avec un obstacle de moins reste une salle.
+  const horsArrivee = (x, z, largeurX, largeurZ) => {
+    const dx = Math.max(0, Math.abs(x - ARRIVEE.x) - largeurX / 2);
+    const dz = Math.max(0, Math.abs(z - ARRIVEE.z) - largeurZ / 2);
+    return Math.hypot(dx, dz) >= ARRIVEE.rayon;
+  };
+
+  const nombreCovers = 4 + Math.floor(alea() * 5);
+  for (let i = 0; i < nombreCovers; i += 1) {
+    const largeur = 1.8 + alea() * 3.4;
+    const profondeurBloc = 1.6 + alea() * 3.2;
+    const hauteur = 1.5 + alea() * 2.4;
+    let x = 0;
+    let z = 0;
+    let essai = 0;
+    do {
+      x = (alea() * 2 - 1) * (demi - largeur / 2);
+      z = (alea() * 2 - 1) * (demi - profondeurBloc / 2);
+      essai += 1;
+    } while (!horsArrivee(x, z, largeur, profondeurBloc) && essai < 20);
+    if (!horsArrivee(x, z, largeur, profondeurBloc)) continue;
+    salle.covers.push([x, z, largeur, profondeurBloc, hauteur,
+      ACCENTS_SALLE[Math.floor(alea() * ACCENTS_SALLE.length)]]);
+  }
+
+  const nombrePiliers = 2 + Math.floor(alea() * 5);
+  for (let i = 0; i < nombrePiliers; i += 1) {
+    let x = 0;
+    let z = 0;
+    let essai = 0;
+    do {
+      x = (alea() * 2 - 1) * (demi - 2);
+      z = (alea() * 2 - 1) * (demi - 2);
+      essai += 1;
+    } while (!horsArrivee(x, z, 2.7, 2.7) && essai < 20);
+    if (!horsArrivee(x, z, 2.7, 2.7)) continue;
+    salle.pillars.push([x, z]);
+  }
+
+  // Six pastilles reparties sur le pourtour, comme les cartes ecrites a la main.
+  const nbPastilles = 5 + Math.floor(alea() * 2);
+  for (let i = 0; i < nbPastilles; i += 1) {
+    const angle = (i / nbPastilles) * Math.PI * 2 + alea() * 0.4;
+    const rayon = demi - 1.2 - alea() * 2;
+    salle.spawnPads.push([
+      Math.cos(angle) * rayon,
+      Math.sin(angle) * rayon,
+      -angle + Math.PI / 2
+    ]);
+  }
+
+  // Le portail est pose loin de l'arrivee, sinon le joueur n'a rien a faire et
+  // la salle ne sert a rien.
+  let angleP = alea() * Math.PI * 2;
+  for (let essai = 0; essai < 24; essai += 1) {
+    const candidat = [Math.cos(angleP) * (demi - 1.5), Math.sin(angleP) * (demi - 1.5)];
+    if (Math.hypot(candidat[0] - ARRIVEE.x, candidat[1] - ARRIVEE.z) > 8) {
+      salle.portail = candidat;
+      break;
+    }
+    angleP = alea() * Math.PI * 2;
+  }
+  if (!salle.portail) {
+    const opposition = ARRIVEE.z > 0 ? -1 : 1;
+    salle.portail = [ARRIVEE.x, opposition * (demi - 1.5)];
+  }
+
+  // Le terminal est un BONUS aleatoire, pas une presence par defaut qu on
+  // effacerait ensuite. Avant, il etait toujours pose puis abandonne s'il
+  // tombait dans un bloc : sept salles sur huit en avaient un, et le joueur
+  // pouvait compter dessus.
+  salle.aTerminal = alea() < 0.5;
+  if (salle.aTerminal) {
+    // Le terminal doit etre LOIN du portail.
+    //
+    // Sans cette contrainte, il tombe parfois juste a cote, et marcher vers la
+    // porte ouvre le magasin en chemin. Le joueur ne comprend pas pourquoi il
+    // se retrouve dans une boutique au moment de descendre, et il doit repartir
+    // avant de pouvoir franchir le portail. C'est aussi ce qui faisait echouer
+    // le test du donjon de facon aleatoire, sur un etat "shop" a l'arrivee
+    // d'un palier.
+    const anglePorte = Math.atan2(salle.portail[1] - ARRIVEE.z,
+      salle.portail[0] - ARRIVEE.x);
+    const angleT = anglePorte + Math.PI * (0.6 + alea() * 0.8);
+    salle.terminal = [
+      Math.cos(angleT) * (demi - 2.5),
+      Math.sin(angleT) * (demi - 2.5)
+    ];
+  } else {
+    salle.terminal = null;
+  }
+
+  // Trois lumieres suffisent a eclairer : plus, ca coute sur mobile, et la
+  // carte de base en a trois.
+  for (let i = 0; i < 3; i += 1) {
+    const angle = alea() * Math.PI * 2;
+    salle.lights.push({
+      color: ACCENTS_SALLE[Math.floor(alea() * ACCENTS_SALLE.length)],
+      intensity: 20 + alea() * 16,
+      distance: 20 + alea() * 8,
+      x: Math.cos(angle) * (demi - 4),
+      y: 4 + alea() * 3,
+      z: Math.sin(angle) * (demi - 4)
+    });
+  }
+
+  // Le portail ne doit pas naitre dans un mur. On le repousse tant qu'il est
+  // genere dedans, sinon le joueur pourrait se retrouver devant un bloc solide.
+  let garde = 0;
+  while (!caseLibre(salle.portail[0], salle.portail[1], salle, 1.4) && garde < 24) {
+    const angle = alea() * Math.PI * 2;
+    salle.portail = [Math.cos(angle) * (demi - 1.5), Math.sin(angle) * (demi - 1.5)];
+    garde += 1;
+  }
+  if (caseLibre(salle.portail[0], salle.portail[1], salle, 1.4)) {
+    salle.covers.push([salle.portail[0], salle.portail[1], 4.4, 0.5, 3.4,
+      salle.lights[0].color]);
+    salle.covers.push([salle.portail[0], salle.portail[1], 0.5, 4.4, 3.4,
+      salle.lights[0].color]);
+  } else {
+    // Aucun emplacement libre apres vingt-quatre essais : on vide la salle.
+    salle.covers.length = 0;
+    salle.pillars.length = 0;
+  }
+  if (salle.terminal && !caseLibre(salle.terminal[0], salle.terminal[1], salle, 1.2)) {
+    salle.terminal = null;
+    salle.aTerminal = false;
+  }
+  // Distance terminal-portail : c'est la meme regle, appliquee apres coup parce
+  // que le portail peut avoir ete repousse apres le choix du terminal.
+  if (salle.terminal
+    && Math.hypot(salle.terminal[0] - salle.portail[0],
+      salle.terminal[1] - salle.portail[1]) < 11) {
+    salle.terminal = null;
+    salle.aTerminal = false;
+  }
+
+  // Verification finale, en deux etapes, parce que les deux modeles ne
+  // repondent pas a la meme question.
+  //
+  // 1. LA NAVIGATION : toute pastille d'apparition doit etre dans la meme zone
+  //    que l'arrivee, selon les regles exactes du jeu. C'est la condition qui
+  //    evite les ennemis presses contre un mur, et elle ne concerne que les
+  //    pastilles : ce sont elles qui donnent naissance aux ennemis.
+  // 2. LE PHYSIQUE : le joueur doit pouvoir marcher jusqu'au portail et
+  //    jusqu'au terminal. Le modele fin suffit ici, et meme mieux : lui evite
+  //    de coincer un joueur dans un couloir, ce que la grille grossiere ne
+  //    voit pas.
+  const origine = [ARRIVEE.x, ARRIVEE.z];
+  for (let essai = 0; essai < 16; essai += 1) {
+    const atteint = zoneAtteignableNav(salle, origine);
+    const coupes = salle.spawnPads.filter((p) => !atteint(p[0], p[1]));
+    if (coupes.length === 0) break;
+    // On retire l'obstacle le plus proche d'une pastille coupee : c'est lui
+    // qui fait le mur, pas un autre.
+    let pire = null;
+    let pireEcart = Infinity;
+    for (let i = 0; i < salle.covers.length; i += 1) {
+      for (const coupe of coupes) {
+        const c = salle.covers[i];
+        const d = Math.hypot(c[0] - coupe[0], c[1] - coupe[1]);
+        if (d < pireEcart) { pireEcart = d; pire = { type: 'cover', index: i }; }
+      }
+    }
+    for (let i = 0; i < salle.pillars.length; i += 1) {
+      for (const coupe of coupes) {
+        const p = salle.pillars[i];
+        const d = Math.hypot(p[0] - coupe[0], p[1] - coupe[1]);
+        if (d < pireEcart) { pireEcart = d; pire = { type: 'pillar', index: i }; }
+      }
+    }
+    if (!pire) break;
+    if (pire.type === 'cover') salle.covers.splice(pire.index, 1);
+    else salle.pillars.splice(pire.index, 1);
+  }
+
+  // Les pastilles encore hors zone sont ramenees sur la case libre la plus
+  // proche. L'ennemi qui y apparait peut se trouver coupe pendant une frame,
+  // mais plus indefiniment : le blocage permanent, lui, disparait.
+  const zoneFinale = zoneAtteignableNav(salle, origine);
+  for (const pastille of salle.spawnPads) {
+    if (zoneFinale(pastille[0], pastille[1])) continue;
+    const caseActuelle = navIndex(pastille[0], pastille[1]);
+    const centreActuel = navCentre(caseActuelle);
+    if (zoneFinale(centreActuel.x, centreActuel.z)) continue;
+    let meilleur = -1;
+    let meilleurEcart = Infinity;
+    for (let i = 0; i < NAV_NB * NAV_NB; i += 1) {
+      const centre = navCentre(i);
+      if (navCelluleBloquee(centre.x, centre.z, salle)) continue;
+      if (!zoneFinale(centre.x, centre.z)) continue;
+      const d = Math.hypot(centre.x - pastille[0], centre.z - pastille[1]);
+      if (d < meilleurEcart) { meilleurEcart = d; meilleur = i; }
+    }
+    if (meilleur >= 0) {
+      const centre = navCentre(meilleur);
+      pastille[0] = centre.x;
+      pastille[1] = centre.z;
+    }
+  }
+
+  // Le joueur, lui, doit atteindre la sortie et la boutique.
+  for (let essai = 0; essai < 10; essai += 1) {
+    const atteint = zoneAtteignable(salle, origine, 0.75);
+    const obliges = [salle.portail].concat(salle.terminal ? [salle.terminal] : []);
+    const coupes = obliges.filter((p) => !atteint(p[0], p[1]));
+    if (coupes.length === 0) break;
+    let pire = null;
+    let pireEcart = Infinity;
+    for (let i = 0; i < salle.covers.length; i += 1) {
+      for (const coupe of coupes) {
+        const c = salle.covers[i];
+        const d = Math.hypot(c[0] - coupe[0], c[1] - coupe[1]);
+        if (d < pireEcart) { pireEcart = d; pire = { type: 'cover', index: i }; }
+      }
+    }
+    for (let i = 0; i < salle.pillars.length; i += 1) {
+      for (const coupe of coupes) {
+        const p = salle.pillars[i];
+        const d = Math.hypot(p[0] - coupe[0], p[1] - coupe[1]);
+        if (d < pireEcart) { pireEcart = d; pire = { type: 'pillar', index: i }; }
+      }
+    }
+    if (!pire) break;
+    if (pire.type === 'cover') salle.covers.splice(pire.index, 1);
+    else salle.pillars.splice(pire.index, 1);
+  }
+
+  salle.valide = true;
+  salle.graine = graine;
+  salle.palier = profondeur;
+  salle.aTerminal = Boolean(salle.terminal);
+  return salle;
+}
+
 let navTimer = 0;
 
 // La shadow map est rafraichie 1 frame sur SHADOW_REFRESH_FRAMES pendant le
@@ -1608,6 +2801,12 @@ function readCurrentMapIndex() {
   return Number.isInteger(value) && MAP_DEFINITIONS[value] ? value : 0;
 }
 
+// Le mode est memorise comme la carte. Une sauvegarde ancienne n'a pas cette
+// cle : elle se lit alors en campagne, ce qui est le comportement d'avant.
+function readGameMode() {
+  return readStorage(STORAGE_KEYS.mode, 'campagne') === 'donjon' ? 'donjon' : 'campagne';
+}
+
 function readBestScore() {
   const value = Number.parseInt(readStorage(STORAGE_KEYS.bestScore, '0'), 10);
   return Number.isFinite(value) && value > 0 ? value : 0;
@@ -1709,6 +2908,7 @@ function saveProfile() {
   writeStorage(STORAGE_KEYS.abilities, JSON.stringify(ownedAbilities));
   writeStorage(STORAGE_KEYS.equippedAbility, equippedAbility);
   writeStorage(STORAGE_KEYS.map, String(currentMapIndex));
+  writeStorage(STORAGE_KEYS.mode, gameMode);
   writeStorage(STORAGE_KEYS.saveVersion, '1');
 }
 
@@ -1851,6 +3051,37 @@ function updateMapUI() {
   ui.mapButtons.forEach((button) => {
     button.classList.toggle('active', Number(button.dataset.mapIndex) === currentMapIndex);
   });
+  updateModeUI();
+}
+
+// Changer de mode ne recharge pas la page, contrairement a la carte. La
+// recharge etait necessaire pour la carte parce qu elle reconstruit toute la
+// scene ; le mode, lui, n est qu une etiquette et quelques branches.
+function selectGameMode(id) {
+  if (!GAME_MODES[id] || id === gameMode) return gameMode;
+  gameMode = id;
+  saveProfile();
+  updateModeUI();
+  return gameMode;
+}
+
+function updateModeUI() {
+  const definition = GAME_MODES[gameMode];
+  if (ui.modeDescription) ui.modeDescription.textContent = definition.description;
+  ui.modeButtons.forEach((button) => {
+    button.classList.toggle('active', button.dataset.modeId === gameMode);
+  });
+  // Le titre de l'onglet porte le mode. C'est un detail d'ergonomie, mais il
+  // résout une vraie confusion : deux versions du jeu cohabitent sur cette
+  // machine, avec des lanceurs identiques et le meme titre d'onglet. Sans
+  // cette difference, on ne peut pas savoir laquelle on joue. Avec elle, un
+  // onglet qui refuse de passer sur DONJON dit tout de suite qu'on a ouvert la
+  // mauvaise copie.
+  if (typeof document !== 'undefined') {
+    document.title = gameMode === 'donjon'
+      ? 'Nexus Breach // DONJON'
+      : 'Nexus Breach // CAMPAGNE';
+  }
 }
 
 function updateClassUI() {
@@ -1941,8 +3172,34 @@ function getEquipmentCost(item, nextLevel = getEquipmentLevel(item.id) + 1) {
   return Math.max(1, Math.round((item.baseCost * item.costGrowth ** (level - 1) * escalatingMultiplier) / 5) * 5);
 }
 
+// Les multiplicateurs de l'Atelier permanent, tous a zero.
+//
+// C'est ce que renvoie getPermanentStats au point de depart, et c'est aussi ce
+// que renvoie le donjon en entier. Une seule definition, deux usages : le
+// donjon n'a pas de formule speciale, il recoit juste la table de base et
+// n'y touche pas.
+function statsPermanentesNulles() {
+  return {
+    maxHealth: 0,
+    damageMultiplier: 1,
+    fireRateMultiplier: 1,
+    magazine: 0,
+    reloadMultiplier: 1,
+    speedMultiplier: 1,
+    damageReduction: 0,
+    regen: 0,
+    pierce: 0,
+    lifesteal: 0
+  };
+}
+
 function getPermanentStats() {
-  const stats = {
+  const stats = statsPermanentesNulles();
+  // Le donjon oublie l'atelier permanent : c'est une partie sans arriere-plan.
+  // Sans cette coupure, un joueur qui a joue cent fois en campagne arrive au
+  // premier palier avec ses bonus, et le mode ne prouve plus rien.
+  if (gameMode === 'donjon') return stats;
+  const reels = {
     maxHealth: 0,
     damageMultiplier: 1,
     fireRateMultiplier: 1,
@@ -1997,25 +3254,58 @@ function formatCredits(value) {
   return Math.max(0, Math.round(value)).toLocaleString('fr-FR');
 }
 
+// Deux soldes, deux emplacements.
+//
+// Le menu annonce ce que le joueur possede entre les parties : c'est de
+// l'argent d'Atelier, et il doit rester vrai meme au milieu d'une descente.
+// Le HUD et la boutique annoncent ce qu'on peut dépenser MAINTENANT, donc de
+// l'argent de run dans le donjon.
+//
+// Ecrire le même chiffre partout, c'est l'erreur facile : le menu affichait
+// alors 0 CR a un joueur qui en possede des milliers, parce que son argent de
+// run venait d'etre remis a zero. Le test du donjon l'a vu.
 function updateCreditsUI() {
-  const formatted = formatCredits(credits);
-  [ui.menuCredits, ui.hudCredits, ui.shopCredits].forEach((element) => {
-    if (element) element.textContent = formatted;
+  const disponible = formatCredits(argentDisponible());
+  if (ui.menuCredits) ui.menuCredits.textContent = formatCredits(credits);
+  [ui.hudCredits, ui.shopCredits].forEach((element) => {
+    if (element) element.textContent = disponible;
   });
 }
 
 function renderShop() {
   if (!ui.shopItems || !ui.shopWeapons || !ui.shopAbilities || !ui.shopClasses) return;
+  // Dans le donjon, deux sections sur quatre disparaissent : la classe se
+  // choisit au menu, et les modules d atelier sont precisement ce que le mode
+  // supprime. Les retirer evite un panneau mort devant lequel le joueur
+  // n'a rien a faire.
+  const sections = sectionsBoutique();
   ui.shopItems.innerHTML = '';
   ui.shopWeapons.innerHTML = '';
   ui.shopAbilities.innerHTML = '';
   ui.shopClasses.innerHTML = '';
+  // Le titre de section est le frere precedent du conteneur, pas un parent :
+  // le HTML les a l'un a l'autre, sans enveloppe commune. Cacher le conteneur
+  // seul laisserait un titre au-dessus du vide.
+  if (ui.shopClasses.previousElementSibling) {
+    ui.shopClasses.previousElementSibling.style.display = sections.classes ? '' : 'none';
+    ui.shopClasses.style.display = sections.classes ? '' : 'none';
+  }
+  // Les capacites disparaissent aussi, et pour la meme raison qu'en campagne :
+  // une section que le donjon refuse de remplir laisserait un titre et du vide.
+  if (ui.shopAbilities.previousElementSibling) {
+    ui.shopAbilities.previousElementSibling.style.display = sections.capacites ? '' : 'none';
+    ui.shopAbilities.style.display = sections.capacites ? '' : 'none';
+  }
+  if (ui.shopItems.previousElementSibling) {
+    ui.shopItems.previousElementSibling.style.display = sections.modules ? '' : 'none';
+    ui.shopItems.style.display = sections.modules ? '' : 'none';
+  }
   let installedCount = 0;
 
-  Object.values(PLAYER_CLASSES).forEach((classDefinition) => {
+  if (sections.classes) Object.values(PLAYER_CLASSES).forEach((classDefinition) => {
     const owned = ownsClass(classDefinition.id);
     const selected = equippedClass === classDefinition.id;
-    const canBuy = credits >= classDefinition.price;
+    const canBuy = peutDepenser(classDefinition.price);
     const card = document.createElement('button');
     card.type = 'button';
     card.className = `shop-item class-item${selected ? ' weapon-selected' : ''}`;
@@ -2060,7 +3350,7 @@ function renderShop() {
     .forEach((weapon) => {
     const owned = ownsWeapon(weapon.id);
     const selected = equippedWeapon === weapon.id;
-    const canBuy = credits >= weapon.price;
+    const canBuy = peutDepenser(weapon.price);
     const card = document.createElement('button');
     card.type = 'button';
     card.className = `shop-item weapon-item${selected ? ' weapon-selected' : ''}`;
@@ -2130,7 +3420,7 @@ function renderShop() {
     .forEach((ability) => {
     const owned = ownsAbility(ability.id);
     const selected = equippedAbility === ability.id;
-    const canBuy = credits >= ability.price;
+    const canBuy = peutDepenser(ability.price);
     const card = document.createElement('button');
     card.type = 'button';
     card.className = `shop-item ability-item${selected ? ' ability-selected' : ''}`;
@@ -2166,6 +3456,61 @@ function renderShop() {
     ui.shopAbilities.appendChild(card);
   });
 
+  // Les ameliorations de stats du donjon, a la place des capacites.
+  //
+  // Elles ne sont pas un module d'atelier deguise : leur cout monte a chaque
+  // niveau au lieu d'etre fixe, et leur portee s'arrete a la partie en cours.
+  // Le joueur doit donc choisir entre plusieurs routes plutot que remplir une
+  // jauge, ce qui est la seule difference qui vaille le detour.
+  // La section ameliorations n'existe qu'en donjon, et les capacites
+  // disparaissent au meme endroit. Le titre suit sa section : le masquer sans
+  // lui laisserierait un intertitre au-dessus du vide.
+  if (ui.shopAmeliorations) {
+    ui.shopAmeliorations.innerHTML = '';
+    const wanted = sections.ameliorations;
+    if (ui.shopAmeliorations.previousElementSibling) {
+      ui.shopAmeliorations.previousElementSibling.style.display = wanted ? '' : 'none';
+    }
+    ui.shopAmeliorations.style.display = wanted ? '' : 'none';
+    if (!wanted) return;
+    const niveaux = ameliorationsDonjonPossedees();
+    DONJON_AMELIORATIONS.forEach((amelioration) => {
+      const niveau = niveaux.joueur[amelioration.id] || 0;
+      const auMaximum = niveau >= amelioration.max;
+      const cout = coutAmeliorationDonjon(amelioration, niveau);
+      const abordable = peutDepenser(cout);
+      const carte = document.createElement('button');
+      carte.type = 'button';
+      carte.className = 'shop-item amelioration-item';
+      carte.style.setProperty('--shop-color', amelioration.couleur);
+      carte.disabled = auMaximum || !abordable;
+      carte.setAttribute('aria-label',
+        amelioration.nom + ', niveau ' + niveau + ' sur ' + amelioration.max
+        + (auMaximum ? ', au maximum' : ', cout ' + formatCredits(cout) + ' credits'));
+
+      const jauge = Array.from({ length: amelioration.max }, (unused, index) =>
+        '<i class="' + (index < niveau ? 'on' : '') + '"></i>').join('');
+
+      const pied = auMaximum
+        ? '<span class="shop-maxed">AU MAXIMUM</span>'
+        : '<span class="shop-cost">' + formatCredits(cout) + ' CR</span>'
+          + '<small>AMELIORER</small>';
+
+      carte.innerHTML = '<span class="shop-item-top"><span>' + amelioration.court
+        + '</span><span>' + (auMaximum ? 'MAX' : 'NIV ' + String(niveau).padStart(2, '0'))
+        + '</span></span>'
+        + '<span class="shop-item-visual"><svg viewBox="0 0 64 64" aria-hidden="true">'
+        + iconeAmelioration(amelioration.id) + '</svg></span>'
+        + '<h3>' + amelioration.nom + '</h3>'
+        + '<p>' + amelioration.description + '</p>'
+        + '<span class="amelioration-niveaux">' + jauge + '</span>'
+        + '<span class="shop-item-bottom">' + pied + '</span>';
+
+      carte.addEventListener('click', () => acheterAmeliorationDonjon(amelioration.id));
+      ui.shopAmeliorations.appendChild(carte);
+    });
+  }
+
   // L'equipement permanent est lui aussi filtre par classe : un module de
   // sabres n'a aucun effet sur un Ranger, l'afficher serait du leurre.
   const visibleEquipment = META_EQUIPMENT.filter((item) => item.classId === 'shared' || item.classId === equippedClass);
@@ -2173,7 +3518,7 @@ function renderShop() {
     const level = getEquipmentLevel(item.id);
     const maxed = level >= item.maxLevel;
     const nextCost = getEquipmentCost(item, level + 1);
-    const affordable = credits >= nextCost;
+    const affordable = peutDepenser(nextCost);
     if (level > 0) installedCount += 1;
 
     const card = document.createElement('button');
@@ -2226,8 +3571,8 @@ function renderShop() {
 function buyPlayerClass(id) {
   if (state !== GAME_STATE.SHOP) return;
   const classDefinition = PLAYER_CLASSES[id];
-  if (!classDefinition || ownsClass(id) || credits < classDefinition.price) return;
-  credits -= classDefinition.price;
+  if (!classDefinition || ownsClass(id) || !peutDepenser(classDefinition.price)) return;
+  depenserArgent(classDefinition.price);
   ownedClasses[id] = true;
   equippedClass = id;
   player.classId = id;
@@ -2245,8 +3590,8 @@ function buyWeapon(id) {
   if (state !== GAME_STATE.SHOP) return;
   const weapon = WEAPON_DEFINITIONS[id];
   if (!weapon || weapon.classId !== equippedClass) return;
-  if (ownsWeapon(id) || credits < weapon.price) return;
-  credits -= weapon.price;
+  if (ownsWeapon(id) || !peutDepenser(weapon.price)) return;
+  depenserArgent(weapon.price);
   ownedWeapons[id] = true;
   equippedWeapon = id;
   player.weaponId = id;
@@ -2272,8 +3617,8 @@ function buyAbility(id) {
   if (state !== GAME_STATE.SHOP) return;
   const ability = ABILITY_DEFINITIONS[id];
   if (!ability || ability.classId !== equippedClass) return;
-  if (ownsAbility(id) || credits < ability.price) return;
-  credits -= ability.price;
+  if (ownsAbility(id) || !peutDepenser(ability.price)) return;
+  depenserArgent(ability.price);
   ownedAbilities[id] = true;
   equippedAbility = id;
   player.abilityId = id;
@@ -2330,9 +3675,9 @@ function buyEquipment(id) {
   const level = getEquipmentLevel(id);
   if (level >= item.maxLevel) return;
   const cost = getEquipmentCost(item, level + 1);
-  if (credits < cost) return;
+  if (!peutDepenser(cost)) return;
 
-  credits -= cost;
+  depenserArgent(cost);
   ownedEquipment[id] = level + 1;
   saveProfile();
   updateCreditsUI();
@@ -2373,20 +3718,45 @@ const UPGRADE_VALUES = {
 function applyUpgradeStats() {
   const permanent = getPermanentStats();
   const upgrades = player.upgrades;
+  // Les ameliorations du donjon. Elles s'ajoutent aux deux autres sources, en
+  // multiplicatif pour ce qui est multiplicatif, et en addition pour ce qui
+  // s'ajoute. Comme les modules de vague, elles ne se cumulent pas en cascade.
+  //
+  // Elles sont lues et non ecrites ici : ce sont les niveaux achetes au
+  // terminal, et rien d'autre. Sans ca, une amelioration du donjon
+  // continuerait de s'appliquer apres la mort, ce qui ferait du mode un
+  // atelier permanent deguise.
+  const donjon = player.donjon || {};
+  const donjonDegats = DONJON_VALEURS.degats * (donjon.degats || 0);
+  const donjonCadence = DONJON_VALEURS.cadence * (donjon.cadence || 0);
+  const donjonVitesse = DONJON_VALEURS.vitesse * (donjon.vitesse || 0);
+  const donjonRecharge = DONJON_VALEURS.recharge * (donjon.recharge || 0);
+  const donjonChargeur = DONJON_VALEURS.chargeur * (donjon.chargeur || 0);
+  const donjonVie = DONJON_VALEURS.vie * (donjon.vie || 0);
+  const donjonReduction = DONJON_VALEURS.reduction * (donjon.reduction || 0);
+  const donjonPerforation = DONJON_VALEURS.perforation * (donjon.perforation || 0);
   const isAssassin = player.classId === 'assassin';
   const damageKey = isAssassin ? 'shadowDamage' : 'damage';
   const rateKey = isAssassin ? 'shadowFlurry' : 'fireRate';
 
-  const damageScale = (1 + UPGRADE_VALUES.damagePer * (upgrades[damageKey] || 0)) * permanent.damageMultiplier;
-  const rateScale = (1 + UPGRADE_VALUES.fireRatePer * (upgrades[rateKey] || 0)) * permanent.fireRateMultiplier;
+  const damageScale = (1 + UPGRADE_VALUES.damagePer * (upgrades[damageKey] || 0) + donjonDegats)
+    * permanent.damageMultiplier;
+  const rateScale = (1 + UPGRADE_VALUES.fireRatePer * (upgrades[rateKey] || 0) + donjonCadence)
+    * permanent.fireRateMultiplier;
 
   player.damage = player.baseDamage * damageScale;
   player.fireRate = player.baseFireRate * rateScale;
   player.maxHealth = player.baseMaxHealth
     + UPGRADE_VALUES.armorPer * (upgrades.armor || 0)
-    + UPGRADE_VALUES.poiseHealthPer * (upgrades.shadowPoise || 0);
-  player.health = Math.min(player.maxHealth, player.health);
-  player.speed = player.baseSpeed * (1 + UPGRADE_VALUES.speedPer * (upgrades.speed || 0)) * permanent.speedMultiplier;
+    + UPGRADE_VALUES.poiseHealthPer * (upgrades.shadowPoise || 0)
+    + donjonVie;
+  // La vie maximale qui vient d'augmenter se sent tout de suite : sans cela on
+  // achete INTEGRITE et on reste a la meme barre, ce qui donne l'impression
+  // d'un achat inutile.
+  player.health = Math.min(player.maxHealth, player.health + donjonVie);
+  player.speed = player.baseSpeed
+    * (1 + UPGRADE_VALUES.speedPer * (upgrades.speed || 0) + donjonVitesse)
+    * permanent.speedMultiplier;
   // Le Ranger n'a plus AUCUNE source de soin : ni capacite, ni amelioration.
   // Les Nénithes réparateurs ont ete retires, et avec eux la seule voie qui
   // le rendait. Ce qui reste ici n'appartient qu a l'Assassin (poise) ou a
@@ -2395,16 +3765,22 @@ function applyUpgradeStats() {
   // la vie par elle-meme.
   player.regen = permanent.regen
     + UPGRADE_VALUES.poiseRegenPer * (upgrades.shadowPoise || 0);
-  player.damageReduction = Math.min(
-    UPGRADE_VALUES.reductionCap,
-    UPGRADE_VALUES.reductionPer * (upgrades.stabilize || 0) + permanent.damageReduction
-  );
-  player.magazineSize = player.baseMagazine + UPGRADE_VALUES.magazinePer * (upgrades.magazine || 0);
-  player.reloadTime = Math.max(
-    UPGRADE_VALUES.reloadFloor,
-    player.baseReloadTime * (1 - UPGRADE_VALUES.reloadPer * (upgrades.reload || 0)) * permanent.reloadMultiplier
-  );
-  player.pierce = player.basePierce + (upgrades.pierce || 0);
+player.damageReduction = Math.min(
+Math.max(UPGRADE_VALUES.reductionCap, DONJON_VALEURS.reductionPlafond),
+UPGRADE_VALUES.reductionPer * (upgrades.stabilize || 0)
++ permanent.damageReduction
++ donjonReduction
+);
+player.magazineSize = player.baseMagazine
++ UPGRADE_VALUES.magazinePer * (upgrades.magazine || 0)
++ donjonChargeur;
+player.reloadTime = Math.max(
+UPGRADE_VALUES.reloadFloor,
+player.baseReloadTime
+* (1 - UPGRADE_VALUES.reloadPer * (upgrades.reload || 0) - donjonRecharge)
+* permanent.reloadMultiplier
+);
+player.pierce = player.basePierce + (upgrades.pierce || 0) + donjonPerforation;
   player.killHeal = UPGRADE_VALUES.killHealPer * (upgrades.shadowBlood || 0) + permanent.lifesteal;
   player.executionBonus = 1 + UPGRADE_VALUES.executionPer * (upgrades.shadowExecution || 0);
   player.dashCooldownDuration = Math.max(1.1, player.baseDashCooldown * (1 - 0.09 * (upgrades.shadowVeil || 0)));
@@ -2635,6 +4011,23 @@ function makeGlowTexture() {
   return texture;
 }
 
+// La texture de halo, une seule fois pour tout le jeu.
+//
+// makeGlowTexture fabrique un canvas de 128 pixels et une texture GPU. L'appeler
+// pour chaque ennemi paraissait naturel, et c'est exactement le genre de fuite
+// qui ne se voit pas : le compteur de textures reste plausible, la scene
+// ralentit un peu a chaque vague, et le navigateur finit par tuer l'onglet sans
+// rien dire. Le test de graphismes compte les textures precisely pour cela.
+//
+// Le flash de bouche de l'arme et le halo des robots partagent donc le meme
+// degrade. C'est le meme effet, et un seul objet.
+let textureHaloPartagee = null;
+
+function haloPartage() {
+  if (!textureHaloPartagee) textureHaloPartagee = makeGlowTexture();
+  return textureHaloPartagee;
+}
+
 function createEnvironment() {
   const map = MAP_DEFINITIONS[currentMapIndex];
   scene.background = new THREE.Color(map.background);
@@ -2671,11 +4064,21 @@ function createEnvironment() {
     scene.add(pointLight);
   });
 
+  // Le sol. Il occupe le tiers bas de l'ecran en permanence, et c etait le
+  // dernier grand aplat du jeu : une grille peinte sur un plan, sans relief ni
+  // variation d'etat de surface. Un sol qui ne change pas d'aspect sous le
+  // passage du joueur donne l'impression de regarder une image de fond.
+  //
+  // Deux ajustements : une carte de normales qui creuse les dalles, et une
+  // rugosite plus haute avec un metal plus bas, pour que le sol accroche moins
+  // la lumiere au loin et renvoie davantage de detail quand on le regarde.
   const floorMaterial = new THREE.MeshStandardMaterial({
     color: map.floorColor,
     map: makeGridTexture(),
-    roughness: 0.68,
-    metalness: 0.42
+    normalMap: normalDalles(),
+    normalScale: new THREE.Vector2(0.6, 0.6),
+    roughness: 0.74,
+    metalness: 0.34
   });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(CONFIG.arenaSize, CONFIG.arenaSize), floorMaterial);
   floor.rotation.x = -Math.PI / 2;
@@ -2690,7 +4093,18 @@ function createEnvironment() {
   underfloor.position.y = -0.04;
   scene.add(underfloor);
 
-  const wallMaterial = new THREE.MeshStandardMaterial({ color: map.wallColor, roughness: 0.5, metalness: 0.62 });
+  // Les murs portent la meme plaque de blindage que les robots, avec une
+  // densite propre. Sans elle, les quatre murs de l arene sont quatre aplats
+  // de couleur qui occupent la moitie de l ecran, et ils donnent au joueur
+  // l impression de regarder un fond.
+  const wallMaterial = new THREE.MeshStandardMaterial({
+    color: map.wallColor,
+    map: plaqueBlindage(),
+normalMap: normalPlaqueBlindage(),
+normalScale: new THREE.Vector2(0.85, 0.85),
+    roughness: 0.5,
+    metalness: 0.62
+  });
   const wallEdgeMaterial = new THREE.MeshStandardMaterial({
     color: 0x0b1b24,
     emissive: map.wallEdge,
@@ -2707,7 +4121,7 @@ function createEnvironment() {
   });
 
   function addWall(x, z, width, depth, edgeMaterial = wallEdgeMaterial) {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(width, 5.4, depth), wallMaterial);
+    const wall = new THREE.Mesh(boiteChanfreee(width, 5.4, depth), wallMaterial);
     wall.position.set(x, 2.7, z);
     wall.castShadow = PERFORMANCE_PROFILE.shadows;
     wall.receiveShadow = PERFORMANCE_PROFILE.shadows;
@@ -2730,8 +4144,15 @@ function createEnvironment() {
   addWall(22.6, 0, 1.6, 46, orangeEdgeMaterial);
 
   function addCover(x, z, width, depth, height, accent = 0x00eaff) {
-    const material = new THREE.MeshStandardMaterial({ color: 0x162833, roughness: 0.48, metalness: 0.6 });
-    const block = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x162833,
+      map: plaqueBlindage(),
+normalMap: normalPlaqueBlindage(),
+normalScale: new THREE.Vector2(0.85, 0.85),
+      roughness: 0.48,
+      metalness: 0.6
+    });
+    const block = new THREE.Mesh(boiteChanfreee(width, height, depth), material);
     block.position.set(x, height / 2, z);
     block.castShadow = PERFORMANCE_PROFILE.shadows;
     block.receiveShadow = PERFORMANCE_PROFILE.shadows;
@@ -3017,7 +4438,7 @@ function createAssassinWeapon() {
   // Tsuba : barre centrale et deux ailes balayees vers l'arriere, dans la
   // meme epaisseur que la lame. Des cones vifs donnaient des pointes
   // blanches qui cassaient la lecture de la silhouette.
-  const guardWingGeometry = new THREE.BoxGeometry(0.135, 0.026, 0.05);
+  const guardWingGeometry = boiteChanfreee(0.135, 0.026, 0.05);
 
   function createSaber(side) {
     const saber = new THREE.Group();
@@ -3055,7 +4476,7 @@ function createAssassinWeapon() {
       return node;
     });
 
-    const guardBar = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.038, 0.062), darkMaterial);
+    const guardBar = new THREE.Mesh(boiteChanfreee(0.085, 0.038, 0.062), darkMaterial);
     guardBar.position.z = 0.048;
     saber.add(guardBar);
     [-1, 1].forEach((direction) => {
@@ -3094,10 +4515,10 @@ function createAssassinWeapon() {
     saber.add(pommelLight);
 
     // Main faktice, pour que le sabre paraisse tenu.
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.3), darkMaterial);
+    const arm = new THREE.Mesh(boiteChanfreee(0.12, 0.14, 0.3), darkMaterial);
     arm.position.set(0, -0.02, 0.62);
     saber.add(arm);
-    const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.05, 0.11), handleMaterial);
+    const knuckle = new THREE.Mesh(boiteChanfreee(0.135, 0.05, 0.11), handleMaterial);
     knuckle.position.set(0, 0.055, 0.53);
     saber.add(knuckle);
     const knuckleLight = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.008, 0.02), cyanMaterial);
@@ -3134,11 +4555,11 @@ function createWeapon() {
   const cyanMaterial = new THREE.MeshStandardMaterial({ color: 0x06252b, emissive: 0x00eaff, emissiveIntensity: 2.8, roughness: 0.2, metalness: 0.55 });
   const orangeMaterial = new THREE.MeshStandardMaterial({ color: 0x2a0b04, emissive: 0xff4d22, emissiveIntensity: 1.8, roughness: 0.25, metalness: 0.6 });
 
-  const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.19, 0.52), darkMaterial);
+  const receiver = new THREE.Mesh(boiteChanfreee(0.24, 0.19, 0.52), darkMaterial);
   receiver.position.set(0, 0.03, -0.12);
   group.add(receiver);
 
-  const upperRail = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.065, 0.46), blackMaterial);
+  const upperRail = new THREE.Mesh(boiteChanfreee(0.18, 0.065, 0.46), blackMaterial);
   upperRail.position.set(0, 0.16, -0.14);
   group.add(upperRail);
 
@@ -3158,17 +4579,17 @@ function createWeapon() {
     group.add(fin);
   }
 
-  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.33, 0.16), blackMaterial);
+  const grip = new THREE.Mesh(boiteChanfreee(0.14, 0.33, 0.16), blackMaterial);
   grip.position.set(0, -0.2, 0.06);
   grip.rotation.x = -0.28;
   group.add(grip);
 
-  const magazine = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.28, 0.18), darkMaterial);
+  const magazine = new THREE.Mesh(boiteChanfreee(0.14, 0.28, 0.18), darkMaterial);
   magazine.position.set(0, -0.21, -0.13);
   magazine.rotation.x = 0.12;
   group.add(magazine);
 
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.15, 0.33), darkMaterial);
+  const stock = new THREE.Mesh(boiteChanfreee(0.18, 0.15, 0.33), darkMaterial);
   stock.position.set(0, 0, 0.27);
   group.add(stock);
 
@@ -3177,16 +4598,16 @@ function createWeapon() {
   energyCore.rotation.z = Math.PI / 4;
   group.add(energyCore);
 
-  const sideRail = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.055, 0.27), orangeMaterial);
+  const sideRail = new THREE.Mesh(boiteChanfreee(0.025, 0.055, 0.27), orangeMaterial);
   sideRail.position.set(0.135, -0.025, 0.02);
   group.add(sideRail);
 
-  const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.08, 0.035), blackMaterial);
+  const frontSight = new THREE.Mesh(boiteChanfreee(0.035, 0.08, 0.035), blackMaterial);
   frontSight.position.set(0, 0.21, -0.7);
   group.add(frontSight);
 
   muzzleFlash = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: makeGlowTexture(),
+    map: haloPartage(),
     color: 0x9cffff,
     transparent: true,
     opacity: 0,
@@ -3262,8 +4683,274 @@ function applyWeaponVisual(target = weapon) {
 // ===========================================================================
 
 // Boite unite partagee : toutes les parties en derivent, et les geometries
-// sont ensuite partagees entre les ennemis, seules les couleurs changent.
-const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+// Le cube de base de tous les robots.
+//
+// C'est une boite aux aretes coupees, pas une boite.
+//
+// Une boite parfaite avec eclairage plat donne exactement ce que le jeu
+// reprochait : une pile de cubes. Le probleme n'etait pas le materiel, ni le
+// nombre de pieces, mais l'arete vive. Coupee, elle devient une facette qui
+// attrape la lumiere : le robot garde sa lecture low-poly, mais il a des
+// reliefs.
+//
+// C'est le point de levier choisi parce qu'il est gratuit : les 27 pieces d'un
+// robot sont decrites par box() et fusionnees par mergeBoxParts, qui lit ce
+// cube. Le chanfrein est donc applique partout d'un coup, sans toucher aux
+// 161 lignes du constructeur, et toujours en une seule geometrie fusionnee.
+//
+// Le chanfrein est une fraction de chaque dimension. Mise a l'echelle par
+// (largeur, hauteur, profondeur), il reste donc proportionnel sur les trois
+// axes : une cuisse fine et haute garde un chanfrein fin et haut, et non un
+// coin deplace. C'est la raison pour laquelle une boite unique multipliee
+// fonctionne ici, alors qu'un bevel calcule en unites monde serait deforme.
+// Le pave de base, eventuellement fusele.
+//
+// Le fuselage est ce qui fait vraiment sortir le robot de la pile de boites.
+// Une boite a arêtes vives reste une boite meme avec un chanfrein : ses faces
+// sont paralleles deux a deux et rien ne dit que le corps va en s'etalant. Un
+// buste retreci vers la taille, un bras qui s'affine vers le coude, une cuisse
+// qui descend vers le genou : ce sont ces quelques pour cents qui donnent la
+// lecture d'un corps articulé plutot que d'un empilement.
+//
+// La pente est appliquee APRES la construction, en fonction de la hauteur du
+// sommet. Les normales sont ensuite recalculees sommet par sommet, parce que
+// la pente les fausse : une face qui penche n'est plus parallele a un axe.
+//
+// fusee vaut 0 pour une piece droite. Il est mis en cache : le robot n'a que
+// cinq valeurs de fusee differentes, donc cinq geometries au lieu de
+// vingt-sept, et le cout d/'une apparition ne change pas.
+function creerPaveChanfreine(chanfrein, fusee) {
+  const lo = -0.5 + chanfrein;
+  const hi = 0.5 - chanfrein;
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+
+  // Un triangle, avec l'orientation corrigee sur le vol.
+  //
+  // Enumerer les sommets dans le bon sens pour les quarante-quatre triangles
+  // d'une boite coupee est une source d'erreur invisible : la geometrie
+  // s'affiche, mais trois faces sur quatre sont eclairées a l'envers. On calcule
+  // donc la normale geometrique, et on inverse le triangle si elle ne va pas
+  // dans le sens voulu.
+  function triangle(a, b, c, nx, ny, nz) {
+    const ux = b[0] - a[0];
+    const uy = b[1] - a[1];
+    const uz = b[2] - a[2];
+    const vx = c[0] - a[0];
+    const vy = c[1] - a[1];
+    const vz = c[2] - a[2];
+    const cx = uy * vz - uz * vy;
+    const cy = uz * vx - ux * vz;
+    const cz = ux * vy - uy * vx;
+    const sens = (cx * nx + cy * ny + cz * nz) < 0 ? -1 : 1;
+    const p = sens < 0 ? [a, c, b] : [a, b, c];
+
+    for (const v of p) {
+      // La pente : l'echelle horizontale vaut 1 + fusee en haut, et 1 - fusee en
+      // bas. En haut y vaut +0,5, donc le facteur monte avec la hauteur : plus
+      // fusee est grand, plus la piece s'elargit vers le haut et retrecit vers
+      // le bas.
+      //
+      // Le SENS a d'abord ete pris a l'envers : le pave s'elargissait vers le
+      // bas, le buste devenait une jupe et les membres des entonnoirs. C'etait
+      // mathematiquement correct et visuellement l'inverse de l'effet cherche.
+      // Aucun controle de structure ne l'aurait vu : le nombre de triangles
+      // etait bon, les normales etaient alignees, et le robot avait l'air d'etre
+      // passe par un defaut de posture.
+      const facteur = 1 + fusee * (v[1] * 2);
+      positions.push(v[0] * facteur, v[1], v[2] * facteur);
+      // La boite droite garde les normales de la boite. Sans elles, l'attribut
+      // normal serait vide et le moteur inventerait un eclairage de son cote.
+      if (fusee === 0) normals.push(nx, ny, nz);
+    }
+
+    // Coordonnees de texture par projection sur la face.
+    //
+    // On prend les deux axes les moins alignes avec la normale, pas x et y
+    // comme on le ferait par reflexes. Avec x et y, une face vers le haut
+    // recoit des coordonnees qui varient peu, et la texture s'etire sur toute
+    // la longueur du dessus d'un bloc : on obtenait des bavures laites au lieu
+    // de panneaux.
+    const ax = Math.abs(nx);
+    const ay = Math.abs(ny);
+    const az = Math.abs(nz);
+    for (const v of p) {
+      const facteur = 1 + fusee * (v[1] * 2);
+      if (ay >= ax && ay >= az) uvs.push(v[0] * facteur + 0.5, v[2] * facteur + 0.5);
+      else if (ax >= az) uvs.push(v[1] + 0.5, v[2] * facteur + 0.5);
+      else uvs.push(v[0] * facteur + 0.5, v[1] + 0.5);
+    }
+  }
+
+  function quad(a, b, c, d, nx, ny, nz) {
+    triangle(a, b, c, nx, ny, nz);
+    triangle(a, c, d, nx, ny, nz);
+  }
+
+  // 6 faces : le plan extreme, borne par la partie non chanfreine.
+  for (let axe = 0; axe < 3; axe += 1) {
+    const u = (axe + 1) % 3;
+    const v = (axe + 2) % 3;
+    for (const signe of [-1, 1]) {
+      const p = [];
+      for (const [cu, cv] of [[lo, lo], [lo, hi], [hi, hi], [hi, lo]]) {
+        const point = [0, 0, 0];
+        point[axe] = signe * 0.5;
+        point[u] = cu;
+        point[v] = cv;
+        p.push(point);
+      }
+      const n = [0, 0, 0];
+      n[axe] = signe;
+      quad(p[0], p[1], p[2], p[3], n[0], n[1], n[2]);
+    }
+  }
+
+  // 12 aretes : la facette qui relie deux faces voisines.
+  const racine2 = Math.SQRT1_2;
+  for (let a = 0; a < 3; a += 1) {
+    const b = (a + 1) % 3;
+    const c = (a + 2) % 3;
+    for (const sa of [-1, 1]) {
+      for (const sb of [-1, 1]) {
+        const p1 = [0, 0, 0];
+        const p2 = [0, 0, 0];
+        const p3 = [0, 0, 0];
+        const p4 = [0, 0, 0];
+        p1[a] = sa * 0.5; p1[b] = sb * lo; p1[c] = lo;
+        p2[a] = sa * 0.5; p2[b] = sb * lo; p2[c] = hi;
+        p3[a] = sa * lo;  p3[b] = sb * 0.5; p3[c] = hi;
+        p4[a] = sa * lo;  p4[b] = sb * 0.5; p4[c] = lo;
+        const n = [0, 0, 0];
+        n[a] = sa * racine2;
+        n[b] = sb * racine2;
+        quad(p1, p2, p3, p4, n[0], n[1], n[2]);
+      }
+    }
+  }
+
+  // 8 coins : le triangle qui ferme la boite.
+  const racine3 = 1 / Math.sqrt(3);
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        triangle(
+          [sx * 0.5, sy * lo, sz * lo],
+          [sx * lo, sy * 0.5, sz * lo],
+          [sx * lo, sy * lo, sz * 0.5],
+          sx * racine3, sy * racine3, sz * racine3
+        );
+      }
+    }
+  }
+
+  // Les normales sont recalculees sur la geometrie reelle, sommet par sommet.
+  // Elles ne serviraient a rien si l on reprenait celles de la boite droite : la
+  // pente les a faussees, et une face de travers s' eclaire de travers. C est
+  // aussi ce qui donne au fuselage son ombre propre sur le flanc.
+  if (fusee !== 0) {
+    for (let t = 0; t < positions.length; t += 9) {
+      const ax = positions[t];
+      const ay = positions[t + 1];
+      const az = positions[t + 2];
+      const bx = positions[t + 3];
+      const by = positions[t + 4];
+      const bz = positions[t + 5];
+      const cx = positions[t + 6];
+      const cy = positions[t + 7];
+      const cz = positions[t + 8];
+      const ux = bx - ax; const uy = by - ay; const uz = bz - az;
+      const vx = cx - ax; const vy = cy - ay; const vz = cz - az;
+      let nx = uy * vz - uz * vy;
+      let ny = uz * vx - ux * vz;
+      let nz = ux * vy - uy * vx;
+      const longueur = Math.hypot(nx, ny, nz) || 1;
+      nx /= longueur; ny /= longueur; nz /= longueur;
+      for (let v = 0; v < 3; v += 1) {
+        normals[t + v * 3] = nx;
+        normals[t + v * 3 + 1] = ny;
+        normals[t + v * 3 + 2] = nz;
+      }
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  return geometry;
+}
+
+// La boite droite : c est un pave sans pente. Elle passe par le pave pour
+// qu il n y ait qu une seule definition des quarante-quatre triangles.
+function creerCubeChanfreine(chanfrein) {
+  return creerPaveChanfreine(chanfrein, 0);
+}
+
+// Le cube partage par toutes les pieces de tous les robots. Sans index : la
+// fusion le gere, et un cube chanfreine se decrit plus simplement sans.
+const unitBoxGeometry = creerCubeChanfreine(0.07);
+
+// Les pavés fuselés sont mis en cache.
+//
+// Le robot n'a que cinq valeurs de pente différentes, donc cinq géométries au
+// lieu de vingt-sept. Sans ce cache, chaque apparition régénérerait une
+// géométrie par pièce fuselée : c'est de l'allocation dans la boucle de jeu,
+// pour un résultat identique.
+const pavesFuseles = new Map();
+const CHANFREIN_PARTIE = 0.07;
+
+function pavePourFusee(fusee) {
+  if (!fusee) return unitBoxGeometry;
+  const cle = fusee.toFixed(3);
+  if (!pavesFuseles.has(cle)) {
+    pavesFuseles.set(cle, creerPaveChanfreine(CHANFREIN_PARTIE, fusee));
+  }
+  return pavesFuseles.get(cle);
+}
+
+// Version dimensionnee, pour l'arme du joueur et le decor, qui construisent
+// leurs maillages un par un au lieu de passer par la fusion. Le chanfrein est
+// calcule ici en unites monde, donc proportionnel a la piece comme pour les
+// robots, et il ne coute qu'une geometrie de plus par piece.
+function boiteChanfreee(largeur, hauteur, profondeur, chanfrein = 0.035) {
+  const plusPetit = Math.min(largeur, hauteur, profondeur) * 0.22;
+  const c = Math.min(chanfrein, plusPetit);
+  const unite = creerCubeChanfreine(1);
+  // Reutiliser la meme unit cube mis a l'echelle evite d'ecrire deux generateurs.
+  // La geometrie resultante a la MEME forme qu'une boite chanfreee de cette
+  // taille, puisque le chanfrein est une fraction de chaque dimension.
+  const position = unite.attributes.position;
+  const normal = unite.attributes.normal;
+  const uv = unite.attributes.uv;
+  const positions = new Float32Array(position.count * 3);
+  const normals = new Float32Array(position.count * 3);
+  const uvs = new Float32Array(position.count * 2);
+  for (let i = 0; i < position.count; i += 1) {
+    positions[i * 3] = position.getX(i) * largeur;
+    positions[i * 3 + 1] = position.getY(i) * hauteur;
+    positions[i * 3 + 2] = position.getZ(i) * profondeur;
+    // Non uniforme : il faut renormaliser, comme le fait deja la fusion.
+    const nx = normal.getX(i) / largeur;
+    const ny = normal.getY(i) / hauteur;
+    const nz = normal.getZ(i) / profondeur;
+    const longueur = Math.hypot(nx, ny, nz) || 1;
+    normals[i * 3] = nx / longueur;
+    normals[i * 3 + 1] = ny / longueur;
+    normals[i * 3 + 2] = nz / longueur;
+    // Coordonnees de texture a l'echelle de la piece. Un bloc de couverture de
+    // six metres et un de deux metres doivent montrer le meme nombre de
+    // panneaux, sinon la texture trahit les dimensions de l'arene.
+    uvs[i * 2] = uv.getX(i) * largeur;
+    uvs[i * 2 + 1] = uv.getY(i) * hauteur;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  return geometry;
+}
 
 // Fusionne une liste de boites decrites en local (taille, position, rotation)
 // en une seule BufferGeometry. Sans cela, chaque robot coûterait une
@@ -3271,6 +4958,7 @@ const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
 function mergeBoxParts(parts) {
   const positions = [];
   const normals = [];
+  const uvs = [];
   const indices = [];
   const matrix = new THREE.Matrix4();
   const normalMatrix = new THREE.Matrix3();
@@ -3290,20 +4978,50 @@ function mergeBoxParts(parts) {
     matrix.compose(position, quaternion, scale);
     normalMatrix.getNormalMatrix(matrix);
 
-    const vertexAttribute = unitBoxGeometry.attributes.position;
-    const normalAttribute = unitBoxGeometry.attributes.normal;
+    // La geometrie depend de la pente de la piece : un bras fusele et un tronc
+    // droit n'ont pas les memes faces, meme apres la meme echelle.
+    const pave = pavePourFusee(part.fusee || 0);
+    const vertexAttribute = pave.attributes.position;
+    const normalAttribute = pave.attributes.normal;
+    const uvAttribute = pave.attributes.uv;
     for (let i = 0; i < vertexAttribute.count; i += 1) {
       vertex.fromBufferAttribute(vertexAttribute, i).applyMatrix4(matrix);
       positions.push(vertex.x, vertex.y, vertex.z);
-      // La normale ne subit pas l'echelle : transformee par une matrice non
-      // uniforme elle doit etre renormalisee, sinon l'ecclairage des epaules
+      // La normale est renormalisee apres la mise a l echelle, et le
+      // tangente de la pente est ajoutee. Sans ce second terme, le flanc d
+      // une piece fusilee s eclaire comme si elle etait droite : la pente
+      // serait dans la geometrie, mais pas dans l eclairage, et le relief
+      // disparaitrait exactement la ou on voulait le voir.
+      normal.fromBufferAttribute(normalAttribute, i).applyMatrix3(normalMatrix);
+      if (part.fusee) {
+        // Une piece qui se retrecit vers le haut voit sa normale basculer
+        // vers ce haut : c est ce qui donne l ombre du flanc.
+        normal.x += part.fusee * 2 * normalAttribute.getY(i);
+        normal.z += part.fusee * 2 * normalAttribute.getY(i);
+      }
+      normal.normalize();
       // et des tibias est faux.
       normal.fromBufferAttribute(normalAttribute, i).applyMatrix3(normalMatrix).normalize();
       normals.push(normal.x, normal.y, normal.z);
+      // La texture est multipliee par la taille de la piece. Sans cela, un
+      // avant-bras de vingt centimetres et un buste de deux metres porteraient
+      // le meme nombre de joints de panneau : la couture s'etirerait sur toute
+      // la longueur du bras, et le robot semblerait taille dans une seule
+      // feuille.
+      uvs.push(uvAttribute.getX(i) * part.w, uvAttribute.getY(i) * part.h);
     }
+    // Le cube chanfreine n'a pas d'index : mergeBoxParts sait gerer les deux.
+    // Sans ce test, la fusion le lirait comme undefined et le jeu entier
+    // resterait noir.
     const indexAttribute = unitBoxGeometry.index;
-    for (let i = 0; i < indexAttribute.count; i += 1) {
-      indices.push(indexAttribute.getX(i) + offset);
+    if (indexAttribute) {
+      for (let i = 0; i < indexAttribute.count; i += 1) {
+        indices.push(indexAttribute.getX(i) + offset);
+      }
+    } else {
+      for (let i = 0; i < vertexAttribute.count; i += 1) {
+        indices.push(i + offset);
+      }
     }
     offset += vertexAttribute.count;
   }
@@ -3311,6 +5029,7 @@ function mergeBoxParts(parts) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   return geometry;
 }
@@ -3373,7 +5092,7 @@ function buildHumanoid(three, template, materials, options) {
 
   // --- Corps sombre, parties immobiles fusionnees --------------------------
   const structure = [
-    box(0, busteY, 0, busteL, busteH, busteD),
+    box(0, busteY, 0, busteL, busteH, busteD, { fusee: 0.16 }),
     box(0, abdomenY, 0, busteL * 0.8, 0.2, busteD * 0.86),
     box(0, bassinY, 0, busteL * 0.88, 0.2, busteD * 0.9),
     box(-xEpaule, epauleY, 0, 0.17, 0.22, busteD * 0.88),
@@ -3403,7 +5122,7 @@ function buildHumanoid(three, template, materials, options) {
   // a la detection du headshot.
   const headY = hautBuste + headSize * 0.72;
   const head = new three.Mesh(
-    new three.BoxGeometry(headSize * 2, headSize * 1.55, headSize * 1.7),
+    boiteChanfreee(headSize * 2, headSize * 1.55, headSize * 1.7),
     materials.body
   );
   head.position.set(0, headY, 0);
@@ -3424,7 +5143,7 @@ function buildHumanoid(three, template, materials, options) {
   // Visee : une fente horizontale lumineuse, le signe de reconnaissance de la
   // reference. Plus large que haute, c'est ce qui rend le regard lisible.
   const visor = new three.Mesh(
-    new three.BoxGeometry(headSize * 1.72, headSize * 0.3, 0.03),
+    boiteChanfreee(headSize * 1.72, headSize * 0.3, 0.03),
     materials.visor
   );
   visor.position.set(0, headY + headSize * 0.12, headSize * 0.86);
@@ -3435,8 +5154,8 @@ function buildHumanoid(three, template, materials, options) {
   // Le pivot est a l'epaule et le bras pend vers le bas, donc une rotation
   // autour de X leve le bras vers l'avant : c'est le geste d'arme.
   const brasGeometry = mergeBoxParts([
-    box(0, -brasLong / 2, 0, 0.15, brasLong, 0.16),
-    box(0, -brasLong - avantBrasLong / 2, 0, 0.14, avantBrasLong, 0.15),
+    box(0, -brasLong / 2, 0, 0.15, brasLong, 0.16, { fusee: 0.2 }),
+    box(0, -brasLong - avantBrasLong / 2, 0, 0.14, avantBrasLong, 0.15, { fusee: 0.18 }),
     // Main
     box(0, -brasLong - avantBrasLong - 0.06, 0.01, 0.15, 0.13, 0.17)
   ]);
@@ -3461,8 +5180,8 @@ function buildHumanoid(three, template, materials, options) {
   // hancheY et la somme cuisse + tibia + pied vaut exactement hancheY, donc le
   // pied repose sur y = 0.
   const jambeGeometry = mergeBoxParts([
-    box(0, -cuisseLong / 2, 0, 0.2, cuisseLong, 0.21),
-    box(0, -cuisseLong - tibiaLong / 2 + 0.02, 0, 0.17, tibiaLong, 0.18),
+    box(0, -cuisseLong / 2, 0, 0.2, cuisseLong, 0.21, { fusee: 0.16 }),
+    box(0, -cuisseLong - tibiaLong / 2 + 0.02, 0, 0.17, tibiaLong, 0.18, { fusee: 0.14 }),
     // Pied avance vers l'avant, comme sur la reference.
     box(0, -cuisseLong - tibiaLong - piedH / 2, 0.05, 0.21, piedH, 0.31)
   ]);
@@ -3510,7 +5229,264 @@ function animerBras(armPivots, armement) {
     pivot.rotation.z = side * (0.1 + levee * 0.16);
   }
 }
+// La carte de normales des dalles du sol.
+//
+// Meme principe que le blindage : un relief dessine en niveaux de gris, puis
+// converti en normale par un filtre de Sobel. Ici le relief est une grille
+// creuse, et c est elle qui fait que les lignes du sol jouent le role de
+// joints entre des dalles plutot que de traits peints.
+//
+// La grille est volontairement plus grossiere que sur le blindage : des
+// dalles d'un metre environ, pas des rivets. Un sol covered de petits details
+// scintille des que le joueur avance, et le bruit se voit plus que le relief.
+let normalDallesCache = null;
+function normalDalles() {
+  if (normalDallesCache) return normalDallesCache;
+  const taille = 256;
+  const dalles = 4;
+  const joint = taille / dalles;
+
+  const hauteur = document.createElement('canvas');
+  hauteur.width = taille;
+  hauteur.height = taille;
+  const ctx = hauteur.getContext('2d');
+  ctx.fillStyle = '#909090';
+  ctx.fillRect(0, 0, taille, taille);
+  ctx.fillStyle = '#404040';
+  for (let i = 0; i <= dalles; i += 1) {
+    ctx.fillRect(i * joint - 2, 0, 4, taille);
+    ctx.fillRect(0, i * joint - 2, taille, 4);
+  }
+  // Le grain : deux joints sur cinq seulement, pour que le sol ne devienne
+  // pas un quadrille parfait.
+  ctx.fillStyle = '#a8a8a8';
+  for (let i = 0; i < dalles; i += 1) {
+    for (let k = 0; k < dalles; k += 1) {
+      if ((i + k) % 2 === 0) ctx.fillRect(i * joint + 4, k * joint + 4, joint - 8, joint - 8);
+    }
+  }
+
+  const source = ctx.getImageData(0, 0, taille, taille).data;
+  const sortie = document.createElement('canvas');
+  sortie.width = taille;
+  sortie.height = taille;
+  const sortieCtx = sortie.getContext('2d');
+  const image = sortieCtx.createImageData(taille, taille);
+  const force = 1.6;
+  const hauteurAu = (x, y) => source[(((y + taille) % taille) * taille
+    + ((x + taille) % taille)) * 4];
+
+  for (let y = 0; y < taille; y += 1) {
+    for (let x = 0; x < taille; x += 1) {
+      const gx = (hauteurAu(x + 1, y - 1) + 2 * hauteurAu(x + 1, y)
+        + hauteurAu(x + 1, y + 1))
+        - (hauteurAu(x - 1, y - 1) + 2 * hauteurAu(x - 1, y)
+          + hauteurAu(x - 1, y + 1));
+      const gy = (hauteurAu(x - 1, y + 1) + 2 * hauteurAu(x, y + 1)
+        + hauteurAu(x + 1, y + 1))
+        - (hauteurAu(x - 1, y - 1) + 2 * hauteurAu(x, y - 1)
+          + hauteurAu(x + 1, y - 1));
+      const lx = -gx * force;
+      const ly = -gy * force;
+      const longueur = Math.hypot(lx, ly, 255) || 1;
+      const i = (y * taille + x) * 4;
+      image.data[i] = Math.round(((lx / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 1] = Math.round(((ly / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 2] = 255;
+      image.data[i + 3] = 255;
+    }
+  }
+  sortieCtx.putImageData(image, 0, 0);
+
+  normalDallesCache = new THREE.CanvasTexture(sortie);
+  normalDallesCache.wrapS = THREE.RepeatWrapping;
+  normalDallesCache.wrapT = THREE.RepeatWrapping;
+  return normalDallesCache;
+}
+
+// La plaque de blindage.
+//
+// Une seule image, partagee par tous les ennemis, construite au premier besoin.
+// Elle n'est pas un fichier : le jeu n'a aucune ressource a charger, et surtout
+// rien qui puisse manquer.
+//
+// Ce qu'elle apporte, et pourquoi ce n'est pas decoratif : sans elle, chaque
+// surface d'un robot est une couleur unie, donc le seul relief vient de la
+// silhouette et des liseres. Avec des joints de panneau et de la salissure, on
+// distingue une plaque d'une autre a meme distance, et un robot cesse d'etre une
+// silhouette.
+//
+// Elle est volontairement claire et peu contrastee. Une carte s multiplique
+// avec la couleur du materiau : trop sombre, elle transformerait tous les
+// ennemis en memes taches noires.
+let texturePanneau = null;
+let normalPanneau = null;
+function plaqueBlindage() {
+  if (texturePanneau) return texturePanneau;
+  const taille = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = taille;
+  canvas.height = taille;
+  const ctx = canvas.getContext('2d');
+
+  // Fond clair : 0,9, la carte ne doit pas assombrir le materiau.
+  ctx.fillStyle = '#e6e6e6';
+  ctx.fillRect(0, 0, taille, taille);
+
+  // Les joints : quatre bandes, decalees pour eviter l'effet de grille.
+  ctx.strokeStyle = '#8f9aa2';
+  ctx.lineWidth = 3;
+  for (let i = 1; i < 4; i += 1) {
+    const y = Math.round((i / 4) * taille);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(taille, y);
+    ctx.stroke();
+    // L'ombre juste sous le joint : c'est elle qui donne l'illusion d'une
+    // plaque posee sur une autre, et non d'un quadrille peint.
+    ctx.strokeStyle = '#c8ccd0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, y + 3);
+    ctx.lineTo(taille, y + 3);
+    ctx.stroke();
+    ctx.strokeStyle = '#8f9aa2';
+    ctx.lineWidth = 3;
+  }
+
+  // Les rivets, aux croisements.
+  ctx.fillStyle = '#aab2b8';
+  for (let i = 1; i < 4; i += 1) {
+    for (let k = 0; k < 4; k += 1) {
+      ctx.beginPath();
+      ctx.arc((k / 4) * taille + 6, (i / 4) * taille + 6, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // La salissure : quelques balayages diagonaux, tres transparents.
+  ctx.strokeStyle = 'rgba(120, 132, 140, 0.16)';
+  ctx.lineWidth = 9;
+  for (let i = 0; i < 14; i += 1) {
+    const x = (i * 37) % taille;
+    const y = (i * 61) % taille;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 26, y + 9);
+    ctx.stroke();
+  }
+
+  texturePanneau = new THREE.CanvasTexture(canvas);
+  texturePanneau.wrapS = THREE.RepeatWrapping;
+  texturePanneau.wrapT = THREE.RepeatWrapping;
+  // Sans filtrage anisotrope, la couture de panneau scintille des que le
+  // joueur bouge : les texels ne tombent plus sur les pixels.
+  //
+  // Le test typeof est deliberé. Cette fonction est aussi executee par la page
+  // d'apercu des robots, qui n'a pas le profil de performances du jeu, et une
+  // reference directe a une variable absente interromprait toute la page.
+  const antialias = typeof PERFORMANCE_PROFILE !== 'undefined'
+    ? PERFORMANCE_PROFILE.antialias
+    : true;
+  texturePanneau.anisotropy = antialias ? 4 : 1;
+  return texturePanneau;
+}
+
+// La carte de normales du blindage.
+//
+// C'est le changement qui manque le plus, et il ne coute rien : une seule
+// image de plus, partagee par tous les materiaux.
+//
+// La carte de couleur ne change que la TEINTE d'une surface. Elle ne change pas
+// la facon dont cette surface repond a une lumiere qui bouge. Un joint de
+// panneau peint est une ligne plus sombre ; un joint de panneau en relief est
+// une creuse qui renvoie la lumiere d'un cote et l'ombre de l'autre. C'est la
+// difference entre un decor imprime et un decor physique, et c'est
+// exactement ce que le joueur voit en bougeant.
+//
+// La technique : on dessine d'abord un relief en niveaux de gris — blanc en
+// haut, noir en creux — puis on le convertit en normale par un filtre de
+// Sobel. Chaque pixel recoit la direction vers laquelle la surface penche, ce
+// que le moteur sait ensuite utiliser pour l'eclairage.
+function normalPlaqueBlindage() {
+  if (normalPanneau) return normalPanneau;
+  const taille = 256;
+  const joint = taille / 4;
+
+  // Le relief, d'abord : meme dessin que la plaque, mais en niveaux de gris.
+  const hauteur = document.createElement('canvas');
+  hauteur.width = taille;
+  hauteur.height = taille;
+  const ctx = hauteur.getContext('2d');
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, taille, taille);
+  // Une couture creuse : sombre au fond, clair sur la levee.
+  for (let i = 1; i < 4; i += 1) {
+    const y = i * joint;
+    ctx.fillStyle = '#3c3c3c';
+    ctx.fillRect(0, y - 2, taille, 4);
+    ctx.fillStyle = '#c8c8c8';
+    ctx.fillRect(0, y + 2, taille, 2);
+  }
+  // Les rivets en bosses.
+  for (let i = 1; i < 4; i += 1) {
+    for (let k = 0; k < 4; k += 1) {
+      const x = k * joint + 6;
+      const y = i * joint + 6;
+      const degrade = ctx.createRadialGradient(x - 1, y - 1, 0, x, y, 4);
+      degrade.addColorStop(0, '#ffffff');
+      degrade.addColorStop(1, '#808080');
+      ctx.fillStyle = degrade;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const source = ctx.getImageData(0, 0, taille, taille).data;
+  const sortie = document.createElement('canvas');
+  sortie.width = taille;
+  sortie.height = taille;
+  const sortieCtx = sortie.getContext('2d');
+  const image = sortieCtx.createImageData(taille, taille);
+  const force = 2.4;
+
+  // Sobel : la pente locale donne la normale. On echantillonne en tore, sinon
+  // le bord de la texture aurait une couture visible en repetition.
+  const hauteurAu = (x, y) => source[(((y + taille) % taille) * taille
+    + ((x + taille) % taille)) * 4];
+
+  for (let y = 0; y < taille; y += 1) {
+    for (let x = 0; x < taille; x += 1) {
+      const gx = (hauteurAu(x + 1, y - 1) + 2 * hauteurAu(x + 1, y)
+        + hauteurAu(x + 1, y + 1))
+        - (hauteurAu(x - 1, y - 1) + 2 * hauteurAu(x - 1, y)
+          + hauteurAu(x - 1, y + 1));
+      const gy = (hauteurAu(x - 1, y + 1) + 2 * hauteurAu(x, y + 1)
+        + hauteurAu(x + 1, y + 1))
+        - (hauteurAu(x - 1, y - 1) + 2 * hauteurAu(x, y - 1)
+          + hauteurAu(x + 1, y - 1));
+      const lx = -gx * force;
+      const ly = -gy * force;
+      const lz = 255;
+      const longueur = Math.hypot(lx, ly, lz) || 1;
+      const i = (y * taille + x) * 4;
+      image.data[i] = Math.round(((lx / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 1] = Math.round(((ly / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 2] = Math.round(((lz / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 3] = 255;
+    }
+  }
+  sortieCtx.putImageData(image, 0, 0);
+
+  normalPanneau = new THREE.CanvasTexture(sortie);
+  normalPanneau.wrapS = THREE.RepeatWrapping;
+  normalPanneau.wrapT = THREE.RepeatWrapping;
+  return normalPanneau;
+}
+
 function createEnemyMaterials(template) {
+  const plaque = plaqueBlindage();
   const color = template.color;
   const armorColor = template.armorColor || 0x1b2932;
   const accentColor = template.accentColor || color;
@@ -3519,6 +5495,9 @@ function createEnemyMaterials(template) {
     : new THREE.Color(color).multiplyScalar(0.5);
   const body = new THREE.MeshStandardMaterial({
     color: bodyColor,
+    map: plaque,
+normalMap: normalPlaqueBlindage(),
+normalScale: new THREE.Vector2(0.85, 0.85),
     emissive: new THREE.Color(color).multiplyScalar(0.2),
     emissiveIntensity: 0.5,
     roughness: 0.58,
@@ -3527,6 +5506,9 @@ function createEnemyMaterials(template) {
   });
   const armor = new THREE.MeshStandardMaterial({
     color: armorColor,
+    map: plaque,
+normalMap: normalPlaqueBlindage(),
+normalScale: new THREE.Vector2(0.85, 0.85),
     emissive: color,
     emissiveIntensity: 0.18,
     roughness: 0.48,
@@ -3589,6 +5571,42 @@ function createEnemy(typeKey, level) {
   auraLight.visible = PERFORMANCE_PROFILE.enemyAuraLights && (isAlpha || elite);
   root.add(auraLight);
 
+  // Le halo du robot.
+  //
+  // C'est un bloom sans post-traitement, et c'est un choix delibere. Un bloom
+  // reel exige une cible de rendu et plusieurs passes plein ecran ; le resultat
+  // depend ensuite de la facon dont cette version de Three.js applique la
+  // conversion de couleur et le tone mapping en fin de chaine. Une cible mal
+  // reglee donne un ecran noir, et ce defaut n'apparait qu'a l'execution. Je
+  // prefere un gain certain a un effet theoriquement plus fort.
+  //
+  // Un Sprite, et non un quad. Le Sprite s'oriente vers la camera dans le
+  // pipeline lui-meme : on peut donc l'accrocher au robot et l'oublier, alors
+  // qu'un quad pose dans la scene aurait demande une ligne de code par image
+  // pour etre remis droit, et un second endroit ou l'oublier. Comme enfant du
+  // robot, il est aussi nettoye par le parcours de destruction existant, sans
+  // une ligne de plus.
+  //
+  // Le blending additif et depthWrite coupe evitent les deux defauts classiques
+  // du quad lumineux : il ne bouche pas les ennemis qui sont derriere, et il
+  // ne fait pas de couture entre deux triangles.
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: haloPartage(),
+    color: template.color,
+    transparent: true,
+    opacity: isAlpha ? 0.5 : 0.3,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  }));
+  // La taille suit l'echelle du type, pour que la brute soit aussi lisible en
+  // mouvement que le rasteur. Elle reste petite : un halo plus large que le buste
+  // noyerait la silhouette, et c'est la silhouette qu on vient shooter.
+  const haloTaille = (isAlpha ? 2.3 : 1.6) * (template.scale || 1);
+  halo.scale.set(haloTaille, haloTaille, 1);
+  halo.position.set(0, 1.05, 0);
+  halo.renderOrder = 2;
+  root.add(halo);
+
   // Gabarit humanoide cubique : corps sombre, contours luminos, visee claire.
   // Les couleurs de chaque type sont inchangees, seule la forme differe.
   const headSize = (isAlpha ? 0.38 : 0.3) * (template.headScale || 1);
@@ -3630,7 +5648,15 @@ function createEnemy(typeKey, level) {
   // robot fait pres de 2.3 unites de haut, une hitbox de 1.9 laissait le haut
   // du buste et les epaules hors de portee.
   const hitbox = new THREE.Mesh(
-    new THREE.BoxGeometry(template.radius * 1.75, robot.busteY * 1.5, template.radius * 1.6),
+    // La hitbox reste une boite VIVE, et c'est volontaire.
+  //
+  // Elle est invisible : la chanfreiner ne se verrait pas. Mais elle n'est pas
+  // qu'un volume de collision, elle est aussi une cible de visee. Une boite
+  // chanfreee a des coins retronces, donc un ennemi shot dans l'angle de
+  // l'epaule ne serait plus touche. C'est un changement graphique qui
+  // modifierait le tir, et c'est le genre de correction qui ne se remarque
+  // qu'a la disappointed : le joueur tire sur un robot, et rien ne bouge.
+  new THREE.BoxGeometry(template.radius * 1.75, robot.busteY * 1.5, template.radius * 1.6),
     new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false })
   );
   hitbox.position.y = robot.busteY * 0.75;
@@ -3733,6 +5759,13 @@ function disposeEnemy(enemy) {
 
 function chooseEnemyType(waveNumber) {
   const map = MAP_DEFINITIONS[currentMapIndex];
+  // Le donjon garantit un boss tous les cinq paliers. En campagne l'Alpha est
+  // tire au sort : il apparait parfois, ce qui laisse un joueur invulnerable
+  // traverser des dizaines de vagues sans le rencontrer. Ici il est une
+  // echeance, pas une surprise, et le joueur peut s equiper en consequence.
+  if (gameMode === 'donjon' && waveNumber % 5 === 0) {
+    return map.enemyTypeSet === 'foundry' ? 'foundryAlpha' : 'titan';
+  }
   if (map.enemyTypeSet === 'foundry') {
     if (waveNumber >= ALPHA_PREMIERE_VAGUE && waveNumber % 5 === 0 && Math.random() < 0.22) return 'foundryAlpha';
     if (waveNumber >= 3 && Math.random() < 0.38) return 'ironBrute';
@@ -3756,7 +5789,28 @@ function findSpawnPosition() {
       break;
     }
   }
-  return chosen.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 0, (Math.random() - 0.5) * 1.5));
+  // Le decalage aleatoire existe pour que les ennemis n'arrivent pas tous
+  // piles au meme endroit. Il est desormais verifie, et c'est une correction
+  // de fond, pas une precaution.
+  //
+  // Il ne l'etait pas. Un ennemi pouvait naitre jusqu'a 0,75 unite a
+  // l'interieur d'un bloc. La collision refusait alors chaque pas, la
+  // navigation le renvoyait vers la case atteignable la plus proche, de
+  // l'autre cote du mur, et il pressait contre l'obstacle jusqu'a la fin de la
+  // partie. C'est exactement le symptome signale.
+  //
+  // Deux conditions, pas une : la position ne doit pas etre dans un bloc, ET sa
+  // case doit etre atteignable. Sans la seconde, l'ennemi ne nait pas dans un
+  // mur mais dans une poche fermee, et ne vient jamais non plus.
+  for (let essai = 0; essai < 8; essai += 1) {
+    const x = chosen.x + (Math.random() - 0.5) * 1.5;
+    const z = chosen.z + (Math.random() - 0.5) * 1.5;
+    if (isBlocked(x, z, MOUVEMENT_RAYON_MAX)) continue;
+    const index = getNavIndex(x, z).index;
+    if (!navWalkable[index] || navDistance[index] < 0) continue;
+    return new THREE.Vector3(x, 0, z);
+  }
+  return chosen.clone();
 }
 
 function spawnEnemy() {
@@ -3846,7 +5900,7 @@ function rebuildFlowField() {
       const index = row * NAV_GRID_SIZE + column;
       const center = cellCenters[index];
       center.set((column + 0.5) * NAV_CELL_SIZE - CONFIG.arenaSize / 2, 0, (row + 0.5) * NAV_CELL_SIZE - CONFIG.arenaSize / 2);
-      if (!isBlocked(center.x, center.z, 0.78)) navWalkable[index] = 1;
+      if (!isBlocked(center.x, center.z, NAV_MARQUE)) navWalkable[index] = 1;
     }
   }
 
@@ -3949,16 +6003,6 @@ function getFlowDirection(position, target = flowDirectionTarget) {
   targetCell.set(targetCell.x - position.x, 0, targetCell.z - position.z);
   return targetCell.lengthSq() > 0.001 ? targetCell.normalize() : null;
 }
-
-// Un ennemi de grand rayon ne peut pas se faufiler entre deux obstacles : il
-// se fait refuser presque chaque pas et reste fige sur place. Le champ de
-// navigation, lui, est construit pour un rayon de 0.78, donc un grosse
-// creature n'a aucune chance de suivre un chemin designed pour elle.
-//
-// On borne donc le rayon de collision utilise pour le deplacement, et on
-// laisse glisser le long des obstacles : un ennemi bloque tente un pas
-// diagonal avant de s'arreter, ce qui evite qu'il reste coince dans un coin.
-const MOUVEMENT_RAYON_MAX = 0.95;
 
 function moveEntity(position, dx, dz, radius) {
   const collisionRadius = Math.min(radius, MOUVEMENT_RAYON_MAX);
@@ -4556,6 +6600,18 @@ function killEnemy(enemy) {
   enemy.dead = true;
   kills += 1;
   score += enemy.score;
+  // Dans le donjon, l'argent du run se gagne ici et nulle part ailleurs.
+  // Il ne touche pas au credit global : c'est de la monnaie de run, et la
+  // confondre avec l'atelier permanent donnerait au donjon un interet qu'il
+  // n'est pas cense avoir.
+  if (gameMode === 'donjon') {
+    donjonCredits += 8 + Math.round((enemy.template.damage || 9) * 0.4);
+    // Le HUD doit suivre l'argent gagne. updateCreditsUI n'est appele qu'au
+    // demarrage et lors d'un achat : sans cet appel, le solde restait fige a
+    // zero pendant toute la salle, et le joueur ne pouvait pas savoir s'il
+    // pouvait s'offrir quelque chose au terminal.
+    updateCreditsUI();
+  }
   audio.kill();
   const color = enemy.template.color;
   const deathPosition = enemy.root.position.clone().add(new THREE.Vector3(0, 1 * enemy.scale, 0));
@@ -4927,6 +6983,100 @@ function sonderProjectiles() {
   });
 }
 
+// Filet de securite contre les ennemis qui n'avancent plus.
+//
+// La grille de navigation pese 1,5 unite. Elle dit si le CENTRE d'une case est
+// libre, pas si le COULOIR qui relie deux cases l'est. Un passage peut donc
+// paraitre franchissable a ses deux extremites et se reveler trop etroit au
+// milieu, une fois deduit le corps de l'ennemi : la collision refuse chaque
+// pas, et l'ennemi reste sur place jusqu'a la fin de la partie.
+//
+// C'est une limite de la methode, pas un oubli. Rendre la grille aussi fine que
+// le diametre d'un ennemi coute trop de CPU pour un jeu dont le budget se
+// mesure sur telephone. On corrige donc a la volee, ennemi par ennemi, plutot
+// que de pretendre que la grille suffit.
+//
+// La detection mesure un DEPLACEMENT, pas une intention : un ennemi immobile
+// parce qu'il charge, qu'il est ralenti, ou qu'il est a portee d'attaque ne
+// doit surtout pas etre touche. D'ou le garde-fou sur la distance.
+const ARRET_DEPLACEMENT = 0.16;
+const ARRET_TEMPS = 1.1;
+const ARRET_PORTEE = 3.2;
+
+// Le filet peut etre coupe. Pas pour le joueur : pour mesurer ce qu'il vaut.
+// Comparer avec et sans lui est le seul moyen de distinguer un vrai blocage
+// d'un deplacement du filet lui-meme, et les deux se ressemblent exactement.
+let filetActif = true;
+
+function surveillerEnnemiArrete(enemy, delta) {
+  if (!filetActif) return;
+  const x = enemy.root.position.x;
+  const z = enemy.root.position.z;
+  const versJoueur = Math.hypot(player.position.x - x, player.position.z - z);
+  if (versJoueur <= ARRET_PORTEE) {
+    enemy.arret = null;
+    return;
+  }
+  if (!enemy.arret) {
+    enemy.arret = { x, z, temps: 0 };
+    return;
+  }
+  if (Math.hypot(x - enemy.arret.x, z - enemy.arret.z) > ARRET_DEPLACEMENT) {
+    enemy.arret = { x, z, temps: 0 };
+    return;
+  }
+  enemy.arret.temps += delta;
+  if (enemy.arret.temps < ARRET_TEMPS) return;
+
+  // Bloque. On le replace sur une case libre et atteignable, en choisissant celle
+  // qui fait le plus de PROGRES vers le joueur, et non la plus proche.
+  //
+  // La distinction est ce qui fait toute la difference. La version initiale
+  // prenait la case la plus proche : c'etait souvent celle d'apres le mur, de
+  // l'autre cote, et l'ennemi reculaient encore. Mesure : 14,9 m au depart,
+  // 15,9 m quatre secondes plus tard. Il ne bougeait plus, il reculait.
+  //
+  // navDistance est la distance, en cases, jusqu'au joueur. Choisir la case la
+  // plus proche sans regarder ce nombre revient a demander le chemin le plus
+  // court, pas le chemin qui arrive.
+  const portee = 8;
+  let meilleur = -1;
+  let meilleurRang = Infinity;
+  let meilleurEcart = Infinity;
+  for (let c = 0; c < navWalkable.length; c += 1) {
+    if (!navWalkable[c] || navDistance[c] < 0) continue;
+    const centre = navCellCenters[c];
+    const ecart = Math.hypot(centre.x - x, centre.z - z);
+    if (ecart > portee) continue;
+    if (navDistance[c] < meilleurRang
+      || (navDistance[c] === meilleurRang && ecart < meilleurEcart)) {
+      meilleurRang = navDistance[c];
+      meilleurEcart = ecart;
+      meilleur = c;
+    }
+  }
+  // Aucune case valable autour de lui : il est enferme. Dans ce cas on ne le
+  // deplace pas au hasard. Le test le signale, et c'est bien ainsi qu'il faut :
+  // une salle qui enferme un ennemi est un defaut du generateur, pas un
+  // ennemi qu'on peut arranger.
+  if (meilleur < 0) {
+    enemy.arret = { x, z, temps: 0 };
+    return;
+  }
+  const centre = navCellCenters[meilleur];
+  // La meme marge que la grille, au centieme pres. Le filet ne servait a rien
+  // avec un rayon + 5 cm : il rejetait les cases que la navigation venait
+  // d'approuver, donc il ne deplacait jamais personne. Un nombre de centimetres
+  // suffisaient a annuler tout le filet.
+  if (isBlocked(centre.x, centre.z, MOUVEMENT_RAYON_MAX)) {
+    enemy.arret = { x, z, temps: 0 };
+    return;
+  }
+  enemy.root.position.x = centre.x;
+  enemy.root.position.z = centre.z;
+  enemy.arret = { x: centre.x, z: centre.z, temps: 0 };
+}
+
 function updateEnemies(delta) {
   navTimer -= delta;
   if (navTimer <= 0) {
@@ -4937,6 +7087,7 @@ function updateEnemies(delta) {
   for (let i = enemies.length - 1; i >= 0; i -= 1) {
     const enemy = enemies[i];
     if (enemy.dead) continue;
+    surveillerEnnemiArrete(enemy, delta);
 
     if (enemy.slowTimer > 0) {
       enemy.slowTimer = Math.max(0, enemy.slowTimer - delta);
@@ -5087,16 +7238,34 @@ function updateWave(delta) {
 
 function startWave() {
   wave += 1;
-  waveTotal = WAVE_CURVES.total(wave);
+  const enDonjon = gameMode === 'donjon';
+  // donjonPalier est l indice de la salle en cours, a partir de zero. Le
+  // premier palier affiche donc P01.
+  const palier = donjonPalier + 1;
+  // Le donjon ne suit pas la courbe des vagues de la campagne. Chaque palier
+  // ajoute un peu plus d'ennemis, mais la progression reste lisible : au-dela
+  // d'un certain nombre, le mode ne se joue plus, il s'encode.
+  waveTotal = enDonjon
+    ? Math.round(6 + palier * 2.6 + Math.pow(palier, 1.35) * 0.8)
+    : WAVE_CURVES.total(wave);
   waveSpawned = 0;
   spawnTimer = 0.4;
   state = GAME_STATE.PLAYING;
   applyWeaponVisual();
   player.reloadRemaining = 0;
   player.ammo = player.magazineSize;
-  ui.waveValue.textContent = String(wave).padStart(2, '0');
+  if (enDonjon) construireSalle(genererSalle(donjonGraine + donjonPalier * 7919, palier));
+  ui.waveValue.textContent = enDonjon
+    ? `P${String(palier).padStart(2, '0')}`
+    : String(wave).padStart(2, '0');
+  // L'etiquette suit le mode. Sans cela, le donjon affichait VAGUE au-dessus
+  // de P01 : un detail d'etiquette, mais qui dit au joueur qu'il joue a un
+  // autre jeu alors qu'il en joue un autre.
+  if (ui.waveLabel) ui.waveLabel.textContent = enDonjon ? 'PALIER' : 'VAGUE';
   ui.enemyValue.textContent = String(waveTotal).padStart(2, '0');
-  ui.waveBannerText.textContent = wave % 5 === 0 ? 'VAGUE ALPHA' : `VAGUE ${String(wave).padStart(2, '0')}`;
+  ui.waveBannerText.textContent = enDonjon
+    ? (palier % 5 === 0 ? `PALIER ${palier} // BOSS` : `PALIER ${palier}`)
+    : wave % 5 === 0 ? 'VAGUE ALPHA' : `VAGUE ${String(wave).padStart(2, '0')}`;
   ui.waveBanner.classList.remove('show');
   void ui.waveBanner.offsetWidth;
   ui.waveBanner.classList.add('show');
@@ -5118,9 +7287,17 @@ function rangerPeutSeRegen() {
 
 function completeWave() {
   if (state !== GAME_STATE.PLAYING) return;
-  const choices = getUpgradeChoices();
   ui.waveBanner.classList.remove('show');
 
+  // Le donjon n'a pas d'ecran de fin de vague. La salle est nettoyee, le
+  // portail s'ouvre, et c'est tout : on ne propose ni module ni soin. La
+  // seule progression passe par le terminal trouve dans la salle.
+  if (gameMode === 'donjon') {
+    ouvrirPortail();
+    return;
+  }
+
+  const choices = getUpgradeChoices();
   // Rien a offrir : on enchaine plutot que d'afficher un ecran vide ou aucun
   // clic ne fait rien.
   if (choices.length === 0 && !rangerPeutSeRegen()) {
@@ -5138,6 +7315,27 @@ function completeWave() {
     return;
   }
   showUpgradeChoices(choices);
+}
+
+// Le portail s'ouvre des que la salle est vide. C'est le seul retour visuel
+// que le joueur a : sans changement de couleur, il ne sait pas s'il a fini.
+//
+// Chaque propriete lue ici doit exister dans construirePortail. Une lettre de
+// differente suffisait a faire sauter la boucle de jeu entiere a la premiere
+// fin de salle : le TypeError part de ouvrirPortail, remonte jusqu au cadre
+// d animation, et plus rien n'est jamais planifie ni mis a jour. Un test qui
+// verrait seulement "le portail ne s'ouvre pas" ne dirait pas d'ou vient le
+// defaut.
+function ouvrirPortail() {
+  const portail = salleCourante.portail;
+  if (!portail) return;
+  portail.materiau.emissive.setHex(COULEUR_PORTAIL_OUVERT);
+  portail.montant.material.emissive.setHex(COULEUR_PORTAIL_OUVERT);
+  portail.voile.material.color.setHex(COULEUR_PORTAIL_OUVERT);
+  portail.voile.material.opacity = 0.46;
+  salleCourante.ouverte = true;
+  abilityMessage = 'SALLE NETTOYEE // PORTAIL OUVERT';
+  abilityMessageTimer = 2.6;
 }
 
 // Ecran de fin de vague du Ranger : deux cartes, pas trois modules.
@@ -5432,12 +7630,29 @@ function returnToMenu() {
 
 function startNewGame() {
   clearDynamicObjects();
+  // Le donjon construit ses salles lui-meme : la carte de la campagne ne sert
+  // plus que de palette et de multiplicateurs de base.
+  if (gameMode === 'donjon') demolirSalle();
   resetStats();
   applyWeaponVisual();
   resetCamera();
   wave = 0;
   score = 0;
   kills = 0;
+  if (gameMode === 'donjon') {
+    donjonPalier = 0;
+    donjonGraine = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+    // Une nouvelle descente repart de zero. L'argent et les niveaux
+    // d'amelioration appartiennent au run : ils survivent aux paliers, pas a
+    // la mort.
+    //
+    // Ces deux lignes sont la consequence directe du choix "l argent reste
+    // tant qu on ne meurt pas". Sans elles, une nouvelle partie heriterait de
+    // la poche de la precedente, et les ameliorations achetees survivraient au
+    // personnage qu on remplace.
+    donjonCredits = 0;
+    player.donjon = {};
+  }
   ui.menu.classList.remove('active');
   ui.pause.classList.remove('active');
   ui.gameover.classList.remove('active');
@@ -5453,6 +7668,23 @@ function startNewGame() {
   audio.ensure();
   startWave();
   requestPointerLock();
+}
+
+// On passe a la salle suivante. Le joueur vient de franchir le portail, donc
+// la salle d avant disparait derriere lui et la suivante est tiree.
+// startWave se charge de la construire : c'est lui qui sait a quel palier on
+// est, et le construire ici comme la une fois ferait deux salles par palier.
+function salleSuivante() {
+  donjonPalier += 1;
+  // L'argent NE se remet PAS a zero ici. Il appartient a la descente, pas a la
+  // salle : le garder d'un palier a l'autre est ce qui donne un interet a
+  // nettoyer vite et a descendre, et ce qui permet d'arrive chez un marchand
+  // avec de quoi acheter. Il disparait a la mort, et uniquement la.
+  //
+  // Une salle neuve, un terminal neuf : le delai de reouverture ne doit pas
+  // deborder sur la salle suivante, sinon son terminal serait muet.
+  terminalDelai = 0;
+  startWave();
 }
 
 function setHudText(element, value) {
@@ -6014,6 +8246,9 @@ function initEvents() {
   ui.mapButtons.forEach((button) => {
     button.addEventListener('click', () => selectMap(Number(button.dataset.mapIndex)));
   });
+  ui.modeButtons.forEach((button) => {
+    button.addEventListener('click', () => selectGameMode(button.dataset.modeId));
+  });
   ui.classButtons.forEach((button) => {
     button.addEventListener('click', () => selectPlayerClass(button.dataset.classId));
   });
@@ -6136,6 +8371,10 @@ function frame(time) {
     // avancent des la meme image, sinon un tir anterieur d'une image
     // paraitrait ne pas partir.
     updateProjectiles(delta);
+    // Le donjon se verifie apres le deplacement du joueur, et avant le HUD :
+    // franchir la porte change de salle, et le HUD doit alors annoncer la
+    // nouvelle, pas celle qu on vient de quitter.
+    majDonjon();
     updateWave(delta);
     hudTimer -= delta;
     if (hudTimer <= 0) {
@@ -6238,6 +8477,267 @@ function init() {
     window.__nexus.blesserJoueur = (fraction) => {
       player.health = player.maxHealth * Math.max(0, Math.min(1, fraction));
       return player.health;
+    };
+    // Tire une salle de donjon sans la construire. La fonction est pure : elle
+    // renvoie de la donnee. C'est ce qui permet de la tester des centaines de
+    // fois en quelques secondes, sans navegador, alors qu'une salle
+    // construction dans la scene ne se verrait qu'a l'image.
+    window.__nexus.genererSalle = (graine, profondeur) => {
+      const salle = genererSalle(graine >>> 0, profondeur | 0);
+      return {
+        valide: salle.valide,
+        graine: salle.graine,
+        aTerminal: salle.aTerminal,
+        portail: salle.portail,
+        terminal: salle.terminal,
+        covers: salle.covers,
+        pillars: salle.pillars,
+        spawnPads: salle.spawnPads,
+        obstacles: obstacles.length
+      };
+    };
+    // Change de mode comme le fait le bouton du menu. Sans cela, un test du
+    // donjon devrait cliquer dans le menu, et il testerait autant l'interface
+    // que le mode.
+    window.__nexus.changerMode = (id) => selectGameMode(id);
+    // Le generateur rejoue les regles de navigation du jeu pour garantir que
+    // les ennemis y parvient. Cette fonction dit si les deux modeles
+    // concordent toujours : si la navigation change, elle renvoie false, et le
+    // test echoue au lieu que les salles cessent silencieusement d'etre
+    // praticables.
+    window.__nexus.navConcordance = () => navConcordance();
+    // La distance de chaque ennemi au joueur. C'est la seule mesure qui
+    // dit si la navigation fonctionne VRAIMENT : le generateur peut promettre
+    // une salle connected, un ennemi peut rester presse contre un bloc malgre
+    // tout, et seule la distance le montre.
+    window.__nexus.distancesEnnemis = () => enemies.map((enemy) => ({
+      x: enemy.root.position.x,
+      z: enemy.root.position.z,
+      d: Math.hypot(enemy.root.position.x - player.position.x,
+        enemy.root.position.z - player.position.z),
+      // Un Tireur dans sa portee de tir S'ARRETE, c'est voulu : il tient sa
+      // distance et il tire. Sans cette info, un test le compte bloque, et le
+      // jeu passe pour casse alors qu'il fait exactement son travail.
+      tire: enemy.peutTirer === true,
+      porteeTir: enemy.rangedRange || 0,
+      // L'etat de navigation de l'ennemi, au point ou il se trouve. C'est ce
+      // qui distingue une salle qui l'a coupe d'un corps trop gros pour le
+      // passage, et les deux n'appellent pas le meme correctif.
+      navOk: navDistance[getNavIndex(enemy.root.position.x, enemy.root.position.z).index] >= 0,
+      navMarchable: navWalkable[getNavIndex(enemy.root.position.x,
+        enemy.root.position.z).index] === 1,
+      dansUnBloc: isBlocked(enemy.root.position.x, enemy.root.position.z,
+        Math.min(enemy.radius, MOUVEMENT_RAYON_MAX))
+    }));
+    // Fait apparaitre un lot d'ennemis d'un coup. Le jeu les fait naitre par
+    // unites, une toutes les une ou deux secondes : sans cette fonction, un
+    // test qui attend trois secondes n'observe qu'un ennemi, et "aucun
+    // ennemi ne bouge pas" ne prouve strictement rien.
+    window.__nexus.peupler = (nombre) => {
+      for (let i = 0; i < nombre; i += 1) spawnEnemy();
+      waveSpawned = Math.max(waveSpawned, waveTotal);
+      return enemies.length;
+    };
+    window.__nexus.filet = (actif) => { filetActif = actif !== false; };
+    // Les statistiques reelles du joueur, apres toutes les sources. C'est la
+    // seule maniere de verifier qu'une amelioration achetee CHANGE quelque
+    // chose : une carte qui s'affiche, un cout qui se debite, et des chiffres
+    // qui bougent pas, c'est trois annonces et un mensonge.
+    window.__nexus.etatStats = () => ({
+      damage: player.damage,
+      fireRate: player.fireRate,
+      maxHealth: player.maxHealth,
+      health: player.health,
+      speed: player.speed,
+      magazine: player.magazineSize,
+      reload: player.reloadTime,
+      reduction: player.damageReduction,
+      pierce: player.pierce,
+      donjon: { ...(player.donjon || {}) }
+    });
+    // Acheter par le meme chemin que le clic sur la carte. Un test qui
+    // modifierait player.donjon directement verifierait qu'il sait ecrire dans
+    // un objet, pas que la boutique fonctionne.
+    window.__nexus.acheterAmelioration = (id) => acheterAmeliorationDonjon(id);
+    // De l'argent de run, pour les tests qui doivent acheter.
+    //
+    // Il passe par la meme variable que les eliminations, de sorte qu'un test
+    // verifie que la boutique s'en sert. Ecrire directement dans donjonCredits
+    // prouverait seulement que la variable existe.
+    // Relance une descente depuis le debut, comme le bouton "recommencer".
+    // Sans elle, on ne peut pas verifier qu'une nouvelle partie repart de zero :
+    // le test ne ferait que constater l'etat de la partie en cours.
+    window.__nexus.nouvellePartieDonjon = () => {
+      startNewGame();
+      return { palier: donjonPalier, argent: donjonCredits };
+    };
+    // Cadre l'ennemi le plus proche, pour une capture rapprochee.
+    // Sert au controle visuel des graphismes : l'apercu d'ensemble est trop
+    // loin pour qu'un chanfrein de quelques pour cent se voie.
+    window.__nexus.cadrerEnnemi = (distance) => {
+      if (!enemies.length) return null;
+      const cible = enemies[0].root.position;
+      const angle = Math.PI * 0.28;
+      camera.position.set(
+        cible.x + Math.cos(angle) * distance,
+        cible.y + 1.5,
+        cible.z + Math.sin(angle) * distance
+      );
+      camera.lookAt(cible.x, cible.y + 1, cible.z);
+      return { x: cible.x, y: cible.y, z: cible.z, distance };
+    };
+    // Mesure le cout de rendu sur un nombre d'images donne.
+    //
+    // Le nombre de triangles vient de l'information de rendu du dernier
+    // dessin, et le temps par image du nombre d'appels a requestAnimationFrame.
+    // Les deux sont chiffres, pas impressions.
+    // Combien d'images GPU le jeu detient, et combien de geometries.
+    //
+    // C'est le controle anti-fuite. Les textures sont des objets GPU : si la
+    // plaque etait regeneree a chaque ennemi, elle mourrait a chaque
+    // apparition, le pilote s'enflerait, et le jeu saccaderait au bout de
+    // quelques minutes sans qu'aucune erreur ne soit levee. Ce defaut ne se
+    // voit pas sur une capture ; il se voit ici.
+    window.__nexus.comptageTextures = () => ({
+      textures: renderer.info.memory.textures,
+      geometries: renderer.info.memory.geometries,
+      ennemis: enemies.length
+    });
+    window.__nexus.materiauxEnnemi = () => {
+      // ENEMY_TYPES est un objet indexe par le nom du type, pas un tableau :
+      // la premiere version tapait ENEMY_TYPES[0] et obtenait undefined.
+      const modele = ENEMY_TYPES[Object.keys(ENEMY_TYPES)[0]];
+      const mats = createEnemyMaterials(modele);
+      return {
+        carte: Boolean(mats.body.map),
+        normale: Boolean(mats.body.normalMap),
+        // La plaque est partagee : les deux appels doivent rendre le meme objet.
+        // Sans cela, chaque appel dessinerait sa propre image.
+        memoirePartagee: plaqueBlindage() === plaqueBlindage()
+          && normalPlaqueBlindage() === normalPlaqueBlindage()
+      };
+    };
+    window.__nexus.materiauxDecor = () => {
+      let solNormale = false;
+      let murNormale = false;
+      let coverNormale = false;
+      scene.traverse((objet) => {
+        if (!objet.material || !objet.material.normalMap) return;
+        const estSol = objet.geometry
+          && objet.geometry.type === 'PlaneGeometry'
+          && objet.rotation.x < -1.4;
+        if (estSol) solNormale = true;
+        else if (objet.geometry && objet.geometry.type === 'BufferGeometry') {
+          // Les murs et les couvertures sont des boites chanfreees, donc des
+          // BufferGeometry. On les distingue par la couleur du materiau.
+          const couleur = objet.material.color ? objet.material.color.getHex() : 0;
+          if (objet.material.emissive && objet.material.emissiveIntensity > 1) return;
+          if (couleur === MAP_DEFINITIONS[currentMapIndex].wallColor) murNormale = true;
+          else if (couleur === 0x162833) coverNormale = true;
+        }
+      });
+      return { solNormale, murNormale, coverNormale };
+    };
+    window.__nexus.tailleOmbres = () => ({
+      taille: PERFORMANCE_PROFILE.shadowMapSize,
+      mobile: PERFORMANCE_PROFILE.mobile
+    });
+    window.__nexus.mesurer = (images) => {
+      return new Promise((resoudre) => {
+        let rendues = 0;
+        let triangles = 0;
+        const debut = performance.now();
+        const image = () => {
+          rendues += 1;
+          triangles = renderer.info.render.triangles;
+          if (rendues >= images) {
+            const duree = performance.now() - debut;
+            resoudre({
+              ennemis: enemies.length,
+              triangles,
+              images: rendues,
+              duree: Math.round(duree),
+              imagesParSeconde: Math.round((rendues / duree) * 1000)
+            });
+            return;
+          }
+          requestAnimationFrame(image);
+        };
+        requestAnimationFrame(image);
+      });
+    };
+    window.__nexus.crediterDonjon = (montant) => {
+      donjonCredits += Math.max(0, Math.round(montant));
+      updateCreditsUI();
+      return donjonCredits;
+    };
+    window.__nexus.coutAmelioration = (id, niveau) => {
+      const definition = DONJON_AMELIORATIONS.find((d) => d.id === id);
+      return definition ? coutAmeliorationDonjon(definition, niveau) : -1;
+    };
+    // Les pastilles d'une salle sont-elles toutes atteignables par la
+    // navigation ? C'est la garantie anti-blocage, vue de l'exterieur.
+    window.__nexus.pastillesAtteignables = (graine, profondeur) => {
+      const salle = genererSalle(graine >>> 0, profondeur | 0);
+      const zone = zoneAtteignableNav(salle, [ARRIVEE.x, ARRIVEE.z]);
+      return salle.spawnPads.map((p) => zone(p[0], p[1]));
+    };
+    // Etat du donjon : ce qu'il faut pour verifier qu'il avance, et qu'il
+    // interdit bien ce qu'il promet d'interdire.
+    window.__nexus.etatDonjon = () => ({
+      mode: gameMode,
+      palier: donjonPalier,
+      argent: donjonCredits,
+      // L'argent d'Atelier, qu'on ne doit pas confondre avec celui de run.
+      // C'est le seul endroit qui expose les deux : le DOM ne peut pas, puisque
+      // le HUD et le menu n'affichent pas la meme chose.
+      argentGlobal: credits,
+      porteOuverte: salleCourante.ouverte,
+      portail: salleCourante.portail
+        ? { x: salleCourante.portail.x, z: salleCourante.portail.z }
+        : null,
+      terminal: salleCourante.terminal
+        ? { x: salleCourante.terminal.x, z: salleCourante.terminal.z }
+        : null,
+      ennemis: enemies.length,
+      // Les compteurs de vague expliquent pourquoi un portail s ouvre ou non :
+      // updateWave ne termine une salle que si tous les ennemis sont apparus ET
+      // que la liste est vide. Sans eux, un portail ferme est muet.
+      etatJeu: state,
+      apparus: waveSpawned,
+      total: waveTotal,
+      maillages: salleCourante.maillages.length,
+      obstacles: obstacles.length,
+      modulesVisibles: sectionsBoutique()
+    });
+    // Place le joueur, et vide la salle. C'est le seul moyen d'atteindre la fin
+    // d'une salle en test sans y jouer pendant plusieurs minutes.
+    window.__nexus.teleport = (x, z) => {
+      player.position.x = x;
+      player.position.z = z;
+      return { x: player.position.x, z: player.position.z };
+    };
+    // Oriente la vue vers un point. Une capture prise sans cela montre un mur,
+    // ou un bout de sol : elle ne juge ni la salle ni la porte, alors qu'elle
+    // est justement la qu'on regarde.
+    window.__nexus.orienterVers = (x, z) => {
+      const dx = x - player.position.x;
+      const dz = z - player.position.z;
+      // L'axe avant du joueur vaut (-sin, -cos). On inverse donc l'angle.
+      player.yaw = Math.atan2(-dx, -dz);
+      return player.yaw;
+    };
+    // Vide la salle comme le joueur le ferait, et c est le mot qui compte : on
+    // passe par killEnemy, donc par le meme chemin de code que le jeu. Le test
+    // mesure ainsi les credits qu un joueur recevrait reellement, et non un
+    // total que le diagnostic aurait invent separement.
+    window.__nexus.nettoyerSalle = () => {
+      // On force aussi l apparition complete : updateWave ne termine une salle
+      // que si waveSpawned a atteint waveTotal. Sans cela, vider la liste ne
+      // suffit pas et la porte ne s ouvre jamais.
+      waveSpawned = waveTotal;
+      [...enemies].forEach((enemy) => killEnemy(enemy));
+      return enemies.length;
     };
     // Saut de vague, pour cette meme capture. Sans lui, elle est impossible :
     // un joueur immobile ne termine pas la vague 1, or la vague 1 ne contient

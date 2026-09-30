@@ -36,7 +36,238 @@ scene.add(clef);
 scene.add(new THREE.GridHelper(24, 24, 0x1d3a4a, 0x14262f));
 
 // ---------------------------------------------------------------- jeu.js
-const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+function creerPaveChanfreine(chanfrein, fusee) {
+  const lo = -0.5 + chanfrein;
+  const hi = 0.5 - chanfrein;
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+
+  // Un triangle, avec l'orientation corrigee sur le vol.
+  //
+  // Enumerer les sommets dans le bon sens pour les quarante-quatre triangles
+  // d'une boite coupee est une source d'erreur invisible : la geometrie
+  // s'affiche, mais trois faces sur quatre sont eclairées a l'envers. On calcule
+  // donc la normale geometrique, et on inverse le triangle si elle ne va pas
+  // dans le sens voulu.
+  function triangle(a, b, c, nx, ny, nz) {
+    const ux = b[0] - a[0];
+    const uy = b[1] - a[1];
+    const uz = b[2] - a[2];
+    const vx = c[0] - a[0];
+    const vy = c[1] - a[1];
+    const vz = c[2] - a[2];
+    const cx = uy * vz - uz * vy;
+    const cy = uz * vx - ux * vz;
+    const cz = ux * vy - uy * vx;
+    const sens = (cx * nx + cy * ny + cz * nz) < 0 ? -1 : 1;
+    const p = sens < 0 ? [a, c, b] : [a, b, c];
+
+    for (const v of p) {
+      // La pente : l'echelle horizontale vaut 1 + fusee en haut, et 1 - fusee en
+      // bas. En haut y vaut +0,5, donc le facteur monte avec la hauteur : plus
+      // fusee est grand, plus la piece s'elargit vers le haut et retrecit vers
+      // le bas.
+      //
+      // Le SENS a d'abord ete pris a l'envers : le pave s'elargissait vers le
+      // bas, le buste devenait une jupe et les membres des entonnoirs. C'etait
+      // mathematiquement correct et visuellement l'inverse de l'effet cherche.
+      // Aucun controle de structure ne l'aurait vu : le nombre de triangles
+      // etait bon, les normales etaient alignees, et le robot avait l'air d'etre
+      // passe par un defaut de posture.
+      const facteur = 1 + fusee * (v[1] * 2);
+      positions.push(v[0] * facteur, v[1], v[2] * facteur);
+      // La boite droite garde les normales de la boite. Sans elles, l'attribut
+      // normal serait vide et le moteur inventerait un eclairage de son cote.
+      if (fusee === 0) normals.push(nx, ny, nz);
+    }
+
+    // Coordonnees de texture par projection sur la face.
+    //
+    // On prend les deux axes les moins alignes avec la normale, pas x et y
+    // comme on le ferait par reflexes. Avec x et y, une face vers le haut
+    // recoit des coordonnees qui varient peu, et la texture s'etire sur toute
+    // la longueur du dessus d'un bloc : on obtenait des bavures laites au lieu
+    // de panneaux.
+    const ax = Math.abs(nx);
+    const ay = Math.abs(ny);
+    const az = Math.abs(nz);
+    for (const v of p) {
+      const facteur = 1 + fusee * (v[1] * 2);
+      if (ay >= ax && ay >= az) uvs.push(v[0] * facteur + 0.5, v[2] * facteur + 0.5);
+      else if (ax >= az) uvs.push(v[1] + 0.5, v[2] * facteur + 0.5);
+      else uvs.push(v[0] * facteur + 0.5, v[1] + 0.5);
+    }
+  }
+
+  function quad(a, b, c, d, nx, ny, nz) {
+    triangle(a, b, c, nx, ny, nz);
+    triangle(a, c, d, nx, ny, nz);
+  }
+
+  // 6 faces : le plan extreme, borne par la partie non chanfreine.
+  for (let axe = 0; axe < 3; axe += 1) {
+    const u = (axe + 1) % 3;
+    const v = (axe + 2) % 3;
+    for (const signe of [-1, 1]) {
+      const p = [];
+      for (const [cu, cv] of [[lo, lo], [lo, hi], [hi, hi], [hi, lo]]) {
+        const point = [0, 0, 0];
+        point[axe] = signe * 0.5;
+        point[u] = cu;
+        point[v] = cv;
+        p.push(point);
+      }
+      const n = [0, 0, 0];
+      n[axe] = signe;
+      quad(p[0], p[1], p[2], p[3], n[0], n[1], n[2]);
+    }
+  }
+
+  // 12 aretes : la facette qui relie deux faces voisines.
+  const racine2 = Math.SQRT1_2;
+  for (let a = 0; a < 3; a += 1) {
+    const b = (a + 1) % 3;
+    const c = (a + 2) % 3;
+    for (const sa of [-1, 1]) {
+      for (const sb of [-1, 1]) {
+        const p1 = [0, 0, 0];
+        const p2 = [0, 0, 0];
+        const p3 = [0, 0, 0];
+        const p4 = [0, 0, 0];
+        p1[a] = sa * 0.5; p1[b] = sb * lo; p1[c] = lo;
+        p2[a] = sa * 0.5; p2[b] = sb * lo; p2[c] = hi;
+        p3[a] = sa * lo;  p3[b] = sb * 0.5; p3[c] = hi;
+        p4[a] = sa * lo;  p4[b] = sb * 0.5; p4[c] = lo;
+        const n = [0, 0, 0];
+        n[a] = sa * racine2;
+        n[b] = sb * racine2;
+        quad(p1, p2, p3, p4, n[0], n[1], n[2]);
+      }
+    }
+  }
+
+  // 8 coins : le triangle qui ferme la boite.
+  const racine3 = 1 / Math.sqrt(3);
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        triangle(
+          [sx * 0.5, sy * lo, sz * lo],
+          [sx * lo, sy * 0.5, sz * lo],
+          [sx * lo, sy * lo, sz * 0.5],
+          sx * racine3, sy * racine3, sz * racine3
+        );
+      }
+    }
+  }
+
+  // Les normales sont recalculees sur la geometrie reelle, sommet par sommet.
+  // Elles ne serviraient a rien si l on reprenait celles de la boite droite : la
+  // pente les a faussees, et une face de travers s' eclaire de travers. C est
+  // aussi ce qui donne au fuselage son ombre propre sur le flanc.
+  if (fusee !== 0) {
+    for (let t = 0; t < positions.length; t += 9) {
+      const ax = positions[t];
+      const ay = positions[t + 1];
+      const az = positions[t + 2];
+      const bx = positions[t + 3];
+      const by = positions[t + 4];
+      const bz = positions[t + 5];
+      const cx = positions[t + 6];
+      const cy = positions[t + 7];
+      const cz = positions[t + 8];
+      const ux = bx - ax; const uy = by - ay; const uz = bz - az;
+      const vx = cx - ax; const vy = cy - ay; const vz = cz - az;
+      let nx = uy * vz - uz * vy;
+      let ny = uz * vx - ux * vz;
+      let nz = ux * vy - uy * vx;
+      const longueur = Math.hypot(nx, ny, nz) || 1;
+      nx /= longueur; ny /= longueur; nz /= longueur;
+      for (let v = 0; v < 3; v += 1) {
+        normals[t + v * 3] = nx;
+        normals[t + v * 3 + 1] = ny;
+        normals[t + v * 3 + 2] = nz;
+      }
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  return geometry;
+}
+
+// La boite droite : c est un pave sans pente. Elle passe par le pave pour
+// qu il n y ait qu une seule definition des quarante-quatre triangles.
+function creerCubeChanfreine(chanfrein) {
+  return creerPaveChanfreine(chanfrein, 0);
+}
+
+// Le cube partage par toutes les pieces de tous les robots. Sans index : la
+// fusion le gere, et un cube chanfreine se decrit plus simplement sans.
+const unitBoxGeometry = creerCubeChanfreine(0.07);
+
+// Les pavés fuselés sont mis en cache.
+//
+// Le robot n'a que cinq valeurs de pente différentes, donc cinq géométries au
+// lieu de vingt-sept. Sans ce cache, chaque apparition régénérerait une
+// géométrie par pièce fuselée : c'est de l'allocation dans la boucle de jeu,
+// pour un résultat identique.
+const pavesFuseles = new Map();
+const CHANFREIN_PARTIE = 0.07;
+
+function pavePourFusee(fusee) {
+  if (!fusee) return unitBoxGeometry;
+  const cle = fusee.toFixed(3);
+  if (!pavesFuseles.has(cle)) {
+    pavesFuseles.set(cle, creerPaveChanfreine(CHANFREIN_PARTIE, fusee));
+  }
+  return pavesFuseles.get(cle);
+}
+
+// Version dimensionnee, pour l'arme du joueur et le decor, qui construisent
+// leurs maillages un par un au lieu de passer par la fusion. Le chanfrein est
+// calcule ici en unites monde, donc proportionnel a la piece comme pour les
+// robots, et il ne coute qu'une geometrie de plus par piece.
+function boiteChanfreee(largeur, hauteur, profondeur, chanfrein = 0.035) {
+  const plusPetit = Math.min(largeur, hauteur, profondeur) * 0.22;
+  const c = Math.min(chanfrein, plusPetit);
+  const unite = creerCubeChanfreine(1);
+  // Reutiliser la meme unit cube mis a l'echelle evite d'ecrire deux generateurs.
+  // La geometrie resultante a la MEME forme qu'une boite chanfreee de cette
+  // taille, puisque le chanfrein est une fraction de chaque dimension.
+  const position = unite.attributes.position;
+  const normal = unite.attributes.normal;
+  const uv = unite.attributes.uv;
+  const positions = new Float32Array(position.count * 3);
+  const normals = new Float32Array(position.count * 3);
+  const uvs = new Float32Array(position.count * 2);
+  for (let i = 0; i < position.count; i += 1) {
+    positions[i * 3] = position.getX(i) * largeur;
+    positions[i * 3 + 1] = position.getY(i) * hauteur;
+    positions[i * 3 + 2] = position.getZ(i) * profondeur;
+    // Non uniforme : il faut renormaliser, comme le fait deja la fusion.
+    const nx = normal.getX(i) / largeur;
+    const ny = normal.getY(i) / hauteur;
+    const nz = normal.getZ(i) / profondeur;
+    const longueur = Math.hypot(nx, ny, nz) || 1;
+    normals[i * 3] = nx / longueur;
+    normals[i * 3 + 1] = ny / longueur;
+    normals[i * 3 + 2] = nz / longueur;
+    // Coordonnees de texture a l'echelle de la piece. Un bloc de couverture de
+    // six metres et un de deux metres doivent montrer le meme nombre de
+    // panneaux, sinon la texture trahit les dimensions de l'arene.
+    uvs[i * 2] = uv.getX(i) * largeur;
+    uvs[i * 2 + 1] = uv.getY(i) * hauteur;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  return geometry;
+}
 
 // Fusionne une liste de boites decrites en local (taille, position, rotation)
 // en une seule BufferGeometry. Sans cela, chaque robot coûterait une
@@ -44,6 +275,7 @@ const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
 function mergeBoxParts(parts) {
   const positions = [];
   const normals = [];
+  const uvs = [];
   const indices = [];
   const matrix = new THREE.Matrix4();
   const normalMatrix = new THREE.Matrix3();
@@ -63,20 +295,50 @@ function mergeBoxParts(parts) {
     matrix.compose(position, quaternion, scale);
     normalMatrix.getNormalMatrix(matrix);
 
-    const vertexAttribute = unitBoxGeometry.attributes.position;
-    const normalAttribute = unitBoxGeometry.attributes.normal;
+    // La geometrie depend de la pente de la piece : un bras fusele et un tronc
+    // droit n'ont pas les memes faces, meme apres la meme echelle.
+    const pave = pavePourFusee(part.fusee || 0);
+    const vertexAttribute = pave.attributes.position;
+    const normalAttribute = pave.attributes.normal;
+    const uvAttribute = pave.attributes.uv;
     for (let i = 0; i < vertexAttribute.count; i += 1) {
       vertex.fromBufferAttribute(vertexAttribute, i).applyMatrix4(matrix);
       positions.push(vertex.x, vertex.y, vertex.z);
-      // La normale ne subit pas l'echelle : transformee par une matrice non
-      // uniforme elle doit etre renormalisee, sinon l'ecclairage des epaules
+      // La normale est renormalisee apres la mise a l echelle, et le
+      // tangente de la pente est ajoutee. Sans ce second terme, le flanc d
+      // une piece fusilee s eclaire comme si elle etait droite : la pente
+      // serait dans la geometrie, mais pas dans l eclairage, et le relief
+      // disparaitrait exactement la ou on voulait le voir.
+      normal.fromBufferAttribute(normalAttribute, i).applyMatrix3(normalMatrix);
+      if (part.fusee) {
+        // Une piece qui se retrecit vers le haut voit sa normale basculer
+        // vers ce haut : c est ce qui donne l ombre du flanc.
+        normal.x += part.fusee * 2 * normalAttribute.getY(i);
+        normal.z += part.fusee * 2 * normalAttribute.getY(i);
+      }
+      normal.normalize();
       // et des tibias est faux.
       normal.fromBufferAttribute(normalAttribute, i).applyMatrix3(normalMatrix).normalize();
       normals.push(normal.x, normal.y, normal.z);
+      // La texture est multipliee par la taille de la piece. Sans cela, un
+      // avant-bras de vingt centimetres et un buste de deux metres porteraient
+      // le meme nombre de joints de panneau : la couture s'etirerait sur toute
+      // la longueur du bras, et le robot semblerait taille dans une seule
+      // feuille.
+      uvs.push(uvAttribute.getX(i) * part.w, uvAttribute.getY(i) * part.h);
     }
+    // Le cube chanfreine n'a pas d'index : mergeBoxParts sait gerer les deux.
+    // Sans ce test, la fusion le lirait comme undefined et le jeu entier
+    // resterait noir.
     const indexAttribute = unitBoxGeometry.index;
-    for (let i = 0; i < indexAttribute.count; i += 1) {
-      indices.push(indexAttribute.getX(i) + offset);
+    if (indexAttribute) {
+      for (let i = 0; i < indexAttribute.count; i += 1) {
+        indices.push(indexAttribute.getX(i) + offset);
+      }
+    } else {
+      for (let i = 0; i < vertexAttribute.count; i += 1) {
+        indices.push(i + offset);
+      }
     }
     offset += vertexAttribute.count;
   }
@@ -84,6 +346,7 @@ function mergeBoxParts(parts) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   return geometry;
 }
@@ -146,7 +409,7 @@ function buildHumanoid(three, template, materials, options) {
 
   // --- Corps sombre, parties immobiles fusionnees --------------------------
   const structure = [
-    box(0, busteY, 0, busteL, busteH, busteD),
+    box(0, busteY, 0, busteL, busteH, busteD, { fusee: 0.16 }),
     box(0, abdomenY, 0, busteL * 0.8, 0.2, busteD * 0.86),
     box(0, bassinY, 0, busteL * 0.88, 0.2, busteD * 0.9),
     box(-xEpaule, epauleY, 0, 0.17, 0.22, busteD * 0.88),
@@ -176,7 +439,7 @@ function buildHumanoid(three, template, materials, options) {
   // a la detection du headshot.
   const headY = hautBuste + headSize * 0.72;
   const head = new three.Mesh(
-    new three.BoxGeometry(headSize * 2, headSize * 1.55, headSize * 1.7),
+    boiteChanfreee(headSize * 2, headSize * 1.55, headSize * 1.7),
     materials.body
   );
   head.position.set(0, headY, 0);
@@ -197,7 +460,7 @@ function buildHumanoid(three, template, materials, options) {
   // Visee : une fente horizontale lumineuse, le signe de reconnaissance de la
   // reference. Plus large que haute, c'est ce qui rend le regard lisible.
   const visor = new three.Mesh(
-    new three.BoxGeometry(headSize * 1.72, headSize * 0.3, 0.03),
+    boiteChanfreee(headSize * 1.72, headSize * 0.3, 0.03),
     materials.visor
   );
   visor.position.set(0, headY + headSize * 0.12, headSize * 0.86);
@@ -208,8 +471,8 @@ function buildHumanoid(three, template, materials, options) {
   // Le pivot est a l'epaule et le bras pend vers le bas, donc une rotation
   // autour de X leve le bras vers l'avant : c'est le geste d'arme.
   const brasGeometry = mergeBoxParts([
-    box(0, -brasLong / 2, 0, 0.15, brasLong, 0.16),
-    box(0, -brasLong - avantBrasLong / 2, 0, 0.14, avantBrasLong, 0.15),
+    box(0, -brasLong / 2, 0, 0.15, brasLong, 0.16, { fusee: 0.2 }),
+    box(0, -brasLong - avantBrasLong / 2, 0, 0.14, avantBrasLong, 0.15, { fusee: 0.18 }),
     // Main
     box(0, -brasLong - avantBrasLong - 0.06, 0.01, 0.15, 0.13, 0.17)
   ]);
@@ -234,8 +497,8 @@ function buildHumanoid(three, template, materials, options) {
   // hancheY et la somme cuisse + tibia + pied vaut exactement hancheY, donc le
   // pied repose sur y = 0.
   const jambeGeometry = mergeBoxParts([
-    box(0, -cuisseLong / 2, 0, 0.2, cuisseLong, 0.21),
-    box(0, -cuisseLong - tibiaLong / 2 + 0.02, 0, 0.17, tibiaLong, 0.18),
+    box(0, -cuisseLong / 2, 0, 0.2, cuisseLong, 0.21, { fusee: 0.16 }),
+    box(0, -cuisseLong - tibiaLong / 2 + 0.02, 0, 0.17, tibiaLong, 0.18, { fusee: 0.14 }),
     // Pied avance vers l'avant, comme sur la reference.
     box(0, -cuisseLong - tibiaLong - piedH / 2, 0.05, 0.21, piedH, 0.31)
   ]);
@@ -283,7 +546,264 @@ function animerBras(armPivots, armement) {
     pivot.rotation.z = side * (0.1 + levee * 0.16);
   }
 }
+// La carte de normales des dalles du sol.
+//
+// Meme principe que le blindage : un relief dessine en niveaux de gris, puis
+// converti en normale par un filtre de Sobel. Ici le relief est une grille
+// creuse, et c est elle qui fait que les lignes du sol jouent le role de
+// joints entre des dalles plutot que de traits peints.
+//
+// La grille est volontairement plus grossiere que sur le blindage : des
+// dalles d'un metre environ, pas des rivets. Un sol covered de petits details
+// scintille des que le joueur avance, et le bruit se voit plus que le relief.
+let normalDallesCache = null;
+function normalDalles() {
+  if (normalDallesCache) return normalDallesCache;
+  const taille = 256;
+  const dalles = 4;
+  const joint = taille / dalles;
+
+  const hauteur = document.createElement('canvas');
+  hauteur.width = taille;
+  hauteur.height = taille;
+  const ctx = hauteur.getContext('2d');
+  ctx.fillStyle = '#909090';
+  ctx.fillRect(0, 0, taille, taille);
+  ctx.fillStyle = '#404040';
+  for (let i = 0; i <= dalles; i += 1) {
+    ctx.fillRect(i * joint - 2, 0, 4, taille);
+    ctx.fillRect(0, i * joint - 2, taille, 4);
+  }
+  // Le grain : deux joints sur cinq seulement, pour que le sol ne devienne
+  // pas un quadrille parfait.
+  ctx.fillStyle = '#a8a8a8';
+  for (let i = 0; i < dalles; i += 1) {
+    for (let k = 0; k < dalles; k += 1) {
+      if ((i + k) % 2 === 0) ctx.fillRect(i * joint + 4, k * joint + 4, joint - 8, joint - 8);
+    }
+  }
+
+  const source = ctx.getImageData(0, 0, taille, taille).data;
+  const sortie = document.createElement('canvas');
+  sortie.width = taille;
+  sortie.height = taille;
+  const sortieCtx = sortie.getContext('2d');
+  const image = sortieCtx.createImageData(taille, taille);
+  const force = 1.6;
+  const hauteurAu = (x, y) => source[(((y + taille) % taille) * taille
+    + ((x + taille) % taille)) * 4];
+
+  for (let y = 0; y < taille; y += 1) {
+    for (let x = 0; x < taille; x += 1) {
+      const gx = (hauteurAu(x + 1, y - 1) + 2 * hauteurAu(x + 1, y)
+        + hauteurAu(x + 1, y + 1))
+        - (hauteurAu(x - 1, y - 1) + 2 * hauteurAu(x - 1, y)
+          + hauteurAu(x - 1, y + 1));
+      const gy = (hauteurAu(x - 1, y + 1) + 2 * hauteurAu(x, y + 1)
+        + hauteurAu(x + 1, y + 1))
+        - (hauteurAu(x - 1, y - 1) + 2 * hauteurAu(x, y - 1)
+          + hauteurAu(x + 1, y - 1));
+      const lx = -gx * force;
+      const ly = -gy * force;
+      const longueur = Math.hypot(lx, ly, 255) || 1;
+      const i = (y * taille + x) * 4;
+      image.data[i] = Math.round(((lx / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 1] = Math.round(((ly / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 2] = 255;
+      image.data[i + 3] = 255;
+    }
+  }
+  sortieCtx.putImageData(image, 0, 0);
+
+  normalDallesCache = new THREE.CanvasTexture(sortie);
+  normalDallesCache.wrapS = THREE.RepeatWrapping;
+  normalDallesCache.wrapT = THREE.RepeatWrapping;
+  return normalDallesCache;
+}
+
+// La plaque de blindage.
+//
+// Une seule image, partagee par tous les ennemis, construite au premier besoin.
+// Elle n'est pas un fichier : le jeu n'a aucune ressource a charger, et surtout
+// rien qui puisse manquer.
+//
+// Ce qu'elle apporte, et pourquoi ce n'est pas decoratif : sans elle, chaque
+// surface d'un robot est une couleur unie, donc le seul relief vient de la
+// silhouette et des liseres. Avec des joints de panneau et de la salissure, on
+// distingue une plaque d'une autre a meme distance, et un robot cesse d'etre une
+// silhouette.
+//
+// Elle est volontairement claire et peu contrastee. Une carte s multiplique
+// avec la couleur du materiau : trop sombre, elle transformerait tous les
+// ennemis en memes taches noires.
+let texturePanneau = null;
+let normalPanneau = null;
+function plaqueBlindage() {
+  if (texturePanneau) return texturePanneau;
+  const taille = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = taille;
+  canvas.height = taille;
+  const ctx = canvas.getContext('2d');
+
+  // Fond clair : 0,9, la carte ne doit pas assombrir le materiau.
+  ctx.fillStyle = '#e6e6e6';
+  ctx.fillRect(0, 0, taille, taille);
+
+  // Les joints : quatre bandes, decalees pour eviter l'effet de grille.
+  ctx.strokeStyle = '#8f9aa2';
+  ctx.lineWidth = 3;
+  for (let i = 1; i < 4; i += 1) {
+    const y = Math.round((i / 4) * taille);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(taille, y);
+    ctx.stroke();
+    // L'ombre juste sous le joint : c'est elle qui donne l'illusion d'une
+    // plaque posee sur une autre, et non d'un quadrille peint.
+    ctx.strokeStyle = '#c8ccd0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, y + 3);
+    ctx.lineTo(taille, y + 3);
+    ctx.stroke();
+    ctx.strokeStyle = '#8f9aa2';
+    ctx.lineWidth = 3;
+  }
+
+  // Les rivets, aux croisements.
+  ctx.fillStyle = '#aab2b8';
+  for (let i = 1; i < 4; i += 1) {
+    for (let k = 0; k < 4; k += 1) {
+      ctx.beginPath();
+      ctx.arc((k / 4) * taille + 6, (i / 4) * taille + 6, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // La salissure : quelques balayages diagonaux, tres transparents.
+  ctx.strokeStyle = 'rgba(120, 132, 140, 0.16)';
+  ctx.lineWidth = 9;
+  for (let i = 0; i < 14; i += 1) {
+    const x = (i * 37) % taille;
+    const y = (i * 61) % taille;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 26, y + 9);
+    ctx.stroke();
+  }
+
+  texturePanneau = new THREE.CanvasTexture(canvas);
+  texturePanneau.wrapS = THREE.RepeatWrapping;
+  texturePanneau.wrapT = THREE.RepeatWrapping;
+  // Sans filtrage anisotrope, la couture de panneau scintille des que le
+  // joueur bouge : les texels ne tombent plus sur les pixels.
+  //
+  // Le test typeof est deliberé. Cette fonction est aussi executee par la page
+  // d'apercu des robots, qui n'a pas le profil de performances du jeu, et une
+  // reference directe a une variable absente interromprait toute la page.
+  const antialias = typeof PERFORMANCE_PROFILE !== 'undefined'
+    ? PERFORMANCE_PROFILE.antialias
+    : true;
+  texturePanneau.anisotropy = antialias ? 4 : 1;
+  return texturePanneau;
+}
+
+// La carte de normales du blindage.
+//
+// C'est le changement qui manque le plus, et il ne coute rien : une seule
+// image de plus, partagee par tous les materiaux.
+//
+// La carte de couleur ne change que la TEINTE d'une surface. Elle ne change pas
+// la facon dont cette surface repond a une lumiere qui bouge. Un joint de
+// panneau peint est une ligne plus sombre ; un joint de panneau en relief est
+// une creuse qui renvoie la lumiere d'un cote et l'ombre de l'autre. C'est la
+// difference entre un decor imprime et un decor physique, et c'est
+// exactement ce que le joueur voit en bougeant.
+//
+// La technique : on dessine d'abord un relief en niveaux de gris — blanc en
+// haut, noir en creux — puis on le convertit en normale par un filtre de
+// Sobel. Chaque pixel recoit la direction vers laquelle la surface penche, ce
+// que le moteur sait ensuite utiliser pour l'eclairage.
+function normalPlaqueBlindage() {
+  if (normalPanneau) return normalPanneau;
+  const taille = 256;
+  const joint = taille / 4;
+
+  // Le relief, d'abord : meme dessin que la plaque, mais en niveaux de gris.
+  const hauteur = document.createElement('canvas');
+  hauteur.width = taille;
+  hauteur.height = taille;
+  const ctx = hauteur.getContext('2d');
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, taille, taille);
+  // Une couture creuse : sombre au fond, clair sur la levee.
+  for (let i = 1; i < 4; i += 1) {
+    const y = i * joint;
+    ctx.fillStyle = '#3c3c3c';
+    ctx.fillRect(0, y - 2, taille, 4);
+    ctx.fillStyle = '#c8c8c8';
+    ctx.fillRect(0, y + 2, taille, 2);
+  }
+  // Les rivets en bosses.
+  for (let i = 1; i < 4; i += 1) {
+    for (let k = 0; k < 4; k += 1) {
+      const x = k * joint + 6;
+      const y = i * joint + 6;
+      const degrade = ctx.createRadialGradient(x - 1, y - 1, 0, x, y, 4);
+      degrade.addColorStop(0, '#ffffff');
+      degrade.addColorStop(1, '#808080');
+      ctx.fillStyle = degrade;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const source = ctx.getImageData(0, 0, taille, taille).data;
+  const sortie = document.createElement('canvas');
+  sortie.width = taille;
+  sortie.height = taille;
+  const sortieCtx = sortie.getContext('2d');
+  const image = sortieCtx.createImageData(taille, taille);
+  const force = 2.4;
+
+  // Sobel : la pente locale donne la normale. On echantillonne en tore, sinon
+  // le bord de la texture aurait une couture visible en repetition.
+  const hauteurAu = (x, y) => source[(((y + taille) % taille) * taille
+    + ((x + taille) % taille)) * 4];
+
+  for (let y = 0; y < taille; y += 1) {
+    for (let x = 0; x < taille; x += 1) {
+      const gx = (hauteurAu(x + 1, y - 1) + 2 * hauteurAu(x + 1, y)
+        + hauteurAu(x + 1, y + 1))
+        - (hauteurAu(x - 1, y - 1) + 2 * hauteurAu(x - 1, y)
+          + hauteurAu(x - 1, y + 1));
+      const gy = (hauteurAu(x - 1, y + 1) + 2 * hauteurAu(x, y + 1)
+        + hauteurAu(x + 1, y + 1))
+        - (hauteurAu(x - 1, y - 1) + 2 * hauteurAu(x, y - 1)
+          + hauteurAu(x + 1, y - 1));
+      const lx = -gx * force;
+      const ly = -gy * force;
+      const lz = 255;
+      const longueur = Math.hypot(lx, ly, lz) || 1;
+      const i = (y * taille + x) * 4;
+      image.data[i] = Math.round(((lx / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 1] = Math.round(((ly / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 2] = Math.round(((lz / longueur) * 0.5 + 0.5) * 255);
+      image.data[i + 3] = 255;
+    }
+  }
+  sortieCtx.putImageData(image, 0, 0);
+
+  normalPanneau = new THREE.CanvasTexture(sortie);
+  normalPanneau.wrapS = THREE.RepeatWrapping;
+  normalPanneau.wrapT = THREE.RepeatWrapping;
+  return normalPanneau;
+}
+
 function createEnemyMaterials(template) {
+  const plaque = plaqueBlindage();
   const color = template.color;
   const armorColor = template.armorColor || 0x1b2932;
   const accentColor = template.accentColor || color;
@@ -292,6 +812,9 @@ function createEnemyMaterials(template) {
     : new THREE.Color(color).multiplyScalar(0.5);
   const body = new THREE.MeshStandardMaterial({
     color: bodyColor,
+    map: plaque,
+normalMap: normalPlaqueBlindage(),
+normalScale: new THREE.Vector2(0.85, 0.85),
     emissive: new THREE.Color(color).multiplyScalar(0.2),
     emissiveIntensity: 0.5,
     roughness: 0.58,
@@ -300,6 +823,9 @@ function createEnemyMaterials(template) {
   });
   const armor = new THREE.MeshStandardMaterial({
     color: armorColor,
+    map: plaque,
+normalMap: normalPlaqueBlindage(),
+normalScale: new THREE.Vector2(0.85, 0.85),
     emissive: color,
     emissiveIntensity: 0.18,
     roughness: 0.48,
@@ -392,6 +918,29 @@ const bras = GABARITS.map((g, i) => {
   const x = (i - (GABARITS.length - 1) / 2) * 3.1;
   return robotier(g.nom, Number(g.couleur), Number(g.scale), g.elite, x);
 });
+
+// Mode gros plan : on cadre un seul robot, de tres pres.
+//
+// L'apercu d'ensemble sert a comparer les gabarits entre eux. Il ne sert
+// Absolutement rien a juger une arete : a quinze metres de distance, un
+// chanfrein de sept pour cent fait un pixel, et l'image est la meme avec ou
+// sans. C'est le piege classique du controle visuel — une capture qui ne peut
+// pas montrer ce qu'on cherche a montrer.
+//
+// On passe en gros plan avec ?gros=1 dans l'adresse. La scene et les robots
+// sont les memes : seule la camera change.
+const GROS_PLAN = new URLSearchParams(location.search).has('gros');
+if (GROS_PLAN) {
+  // Le Rôdeur de Braise, au centre de la rangee : taille mediane, silhouette
+  // lisible, et un modele de taille dans l'image pour juger l'echelle.
+  const cible = bras[Math.min(2, bras.length - 1)].root;
+  const echelle = cible.scale.x;
+  camera.position.set(cible.position.x + 2.7 * echelle,
+    cible.position.y + 1.85 * echelle,
+    cible.position.z + 3.5 * echelle);
+  camera.lookAt(cible.position.x, cible.position.y + 1.0 * echelle, cible.position.z);
+  document.querySelectorAll('div').forEach((d) => { d.style.display = 'none'; });
+}
 
 // Le geste de preparation : on le declenche en boucle, sinon on ne voit pas ce
 // qui se passe quand un ennemi arme son coup.

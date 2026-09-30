@@ -7,7 +7,7 @@
   <meta name="description" content="Nexus Breach — un FPS de survie contre des vagues de monstres.">
   <title>Nexus Breach</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=15">
+  <link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
   <div id="game-shell">
@@ -23,7 +23,7 @@
           <strong id="sector-value">07 // NEXUS</strong>
         </div>
         <div class="wave-readout">
-          <span class="eyebrow">VAGUE</span>
+          <span class="eyebrow" id="wave-label">VAGUE</span>
           <strong id="wave-value">01</strong>
         </div>
         <div class="threat-readout">
@@ -111,6 +111,17 @@
           <div class="briefing-line"><span>OBJECTIF</span><strong>SURVIVRE</strong></div>
           <div class="briefing-line"><span>OPTIMISATION</span><strong>ÉQUIPEMENT</strong></div>
           <div class="briefing-line"><span>CRÉDITS DISPONIBLES</span><strong id="menu-credits">0</strong></div>
+        </div>
+
+        <div class="mode-selector" aria-label="Choix du mode de jeu">
+          <div class="map-selector-heading">
+            <span>MODE DE JEU</span>
+            <strong id="mode-description">Vagues successives, modules à chaque fin de vague.</strong>
+          </div>
+          <div class="map-buttons mode-buttons">
+            <button class="map-button active" data-mode-id="campagne" type="button"><span>01</span><strong>CAMPAGNE</strong></button>
+            <button class="map-button" data-mode-id="donjon" type="button"><span>02</span><strong>DONJON</strong></button>
+          </div>
         </div>
 
         <div class="map-selector" aria-label="Choix de la carte">
@@ -232,6 +243,11 @@
           <small>ACTIVE AVEC ESPACE</small>
         </div>
         <div id="shop-abilities" class="shop-items shop-abilities"></div>
+        <div class="shop-section-heading" id="shop-ameliorations-heading">
+          <span>AMELIORATIONS DE SALLE</span>
+          <small>STATISTIQUES // VALABLES POUR CETTE DESCENTE</small>
+        </div>
+        <div id="shop-ameliorations" class="shop-items shop-ameliorations"></div>
         <div class="shop-section-heading">
           <span>MODULES D'ÉQUIPEMENT</span>
           <small>AMÉLIORATIONS PERMANENTES</small>
@@ -376,6 +392,6 @@
   })();
   </script>
 
-  <script type="module" src="game.js?v=28"></script>
+  <script type="module" src="game.js?v=33"></script>
 </body>
 </html>
