@@ -384,19 +384,87 @@ async function attendreEcran(session, id, attendu, delaiMs, message) {
         : ' ABSENT sur ' + MAX_SALLES));
     if (!salleAvecTerminal) {
       problemes.push('aucun terminal sur ' + MAX_SALLES
-        + ' salles : le generateur en promet environ 40 %');
+        + ' salles : le generateur en garantit un au plus tard tous les deux paliers');
     }
 
-    // 7. Le terminal ouvre le magasin, et le ferme sur la partie.
+    // 7. La boutique ne s ouvre QUE sur une salle nettoyee.
+    //
+    // Le joueur a signale qu elle s'ouvrait en plein combat. Le defaut etait
+    // visible dans le code : le portail avait la condition salleCourante.ouverte,
+    // le terminal non. Les deux se declenchent au contact.
+    //
+    // On verifie les deux moities, dans cet ordre. D'abord que le magasin reste
+    // ferme pendant le combat, sinon le defaut est la. Ensuite seulement qu'il
+    // s'ouvre apres le nettoyage : verifier le second sans le premier prouverait
+    // que la boutique fonctionne, pas qu'elle est fermee au bon moment.
     if (salleAvecTerminal) {
-      await session.evaluer(
-        `window.__nexus.teleport(${salleAvecTerminal.terminal.x},`
-        + ` ${salleAvecTerminal.terminal.z}); true`);
+      const avantCombat = await (async () => {
+        await session.evaluer(
+          `window.__nexus.teleport(${salleAvecTerminal.terminal.x},`
+          + ` ${salleAvecTerminal.terminal.z}); true`);
+        // Assez long pour qu'une ouverture soit incontestable. Le magasin
+        // s'ouvre a la frame qui suit le contact : attendre un peu plus ne peut
+        // que le rendre plus evident, pas moins.
+        await attendre(1200);
+        return session.evaluer(`(() => {
+          const s = document.getElementById('shop-screen');
+          const e = window.__nexus.etatDonjon();
+          return {
+            boutiqueOuverte: Boolean(s) && s.classList.contains('active'),
+            salleOuverte: e.porteOuverte,
+            terminalActif: e.terminal ? e.terminal.actif : null,
+            ennemis: window.__nexus.distancesEnnemis().length
+          };
+        })()`);
+      })();
+      console.log('  7a. en plein combat  : ' + JSON.stringify(avantCombat));
+      if (avantCombat.boutiqueOuverte) {
+        problemes.push('la boutique s ouvre pendant le combat : le terminal'
+          + ' ne doit repondre que sur une salle nettoyee');
+      }
+      if (avantCombat.salleOuverte) {
+        problemes.push('le test ne peut pas verifier la règle : la salle etait'
+          + ' deja nettoyee avant le contact');
+      }
+      if (avantCombat.terminalActif !== false) {
+        problemes.push('le terminal seDeclare actif alors que la salle n est pas'
+          + ' nettoyee : il a l air en service et ne le sera pas');
+      }
+
+      // On nettoie, et on verifie que le terminal s allume.
+      const apresNettoyage = await (async () => {
+        await session.evaluer('window.__nexus.nettoyerSalle(); true');
+        const limite = Date.now() + 6000;
+        let etat = null;
+        while (Date.now() < limite) {
+          etat = await session.evaluer('window.__nexus.etatDonjon()');
+          if (etat.porteOuverte) break;
+          await attendre(150);
+        }
+        await session.evaluer(
+          `window.__nexus.teleport(${salleAvecTerminal.terminal.x},`
+          + ` ${salleAvecTerminal.terminal.z}); true`);
+        return {
+          salleOuverte: Boolean(etat) && etat.porteOuverte,
+          terminalActif: Boolean(etat && etat.terminal) && etat.terminal.actif === true
+        };
+      })();
+      console.log('  7b. apres nettoyage  : ' + JSON.stringify(apresNettoyage));
+      if (!apresNettoyage.salleOuverte) {
+        problemes.push("la salle ne s est pas nettoyee : le test ne peut pas"
+          + ' verifier que la boutique finit par s ouvrir');
+      }
+      if (!apresNettoyage.terminalActif) {
+        problemes.push('le terminal reste eteint apres le nettoyage : la'
+          + ' boutique serait inaccessible pour toujours');
+      }
+
+      // 7c. Le contact ouvre reellement le magasin, et le ferme sur la partie.
       // On scrute l'ecran plutot que d'attendre : le magasin s'ouvre a la
       // frame qui suit le contact, et cette frame n'a pas de duree fixe.
       const boutique = await attendreEcran(session, 'shop-screen', true, 4000,
         'le terminal n ouvre pas le magasin');
-      console.log(`  7. terminal touche : magasin ${boutique.ouverte ? 'ouvert' : 'FERME'}`);
+      console.log('  7c. terminal touche : magasin ' + (boutique.ouverte ? 'ouvert' : 'FERME'));
 
     // 8. Ce que le terminal vend reellement dans le donjon.
     //

@@ -1678,6 +1678,9 @@ function demolirSalle() {
 // vermouillé pour savoir qu'il a encore du travail.
 const COULEUR_PORTAIL_FERME = 0x3a4a52;
 const COULEUR_PORTAIL_OUVERT = 0x62ff9a;
+// Le terminal eteint. Meme famille que le portail ferme, tire vers le froid :
+// un objet hors service doit se lire comme inerte, pas comme casse.
+const COULEUR_TERMINAL_ETEINT = 0x2c4450;
 
 function construireSalle(salle) {
   demolirSalle();
@@ -1890,10 +1893,38 @@ function construireTerminal(position, map) {
       ecran,
       halo,
       x: position[0],
-      z: position[1]
+      z: position[1],
+      actif: false,
+      accent: map.coreAccent
     };
     salleCourante.maillages.push(groupe);
+    // Le terminal nait eteint. La boutique ne s'ouvre que sur une salle
+    // nettoyee, et un terminal qui s'allume avant ne saurait pas mentir sur ce
+    // qu'il permet.
+    appliquerEtatTerminal(false);
   });
+}
+
+// Allume ou eteint le terminal.
+//
+// Le mot eteint est important : le terminal n'est pas CACHE pendant le
+// combat, il est visible mais inerte. Le cacher aurait ete plus simple, et
+// aurait produit un autre defaut de signalement : le joueur voit un objet
+//不见了 au moment où il nettoie la salle, et ne sait pas pourquoi. La lumiere
+// dit ce qui se passe sans rien retirer de la scene.
+function appliquerEtatTerminal(actif) {
+  const terminal = salleCourante.terminal;
+  if (!terminal) return;
+  terminal.actif = actif;
+  if (actif) {
+    terminal.ecran.material.emissive.setHex(terminal.accent);
+    terminal.ecran.material.emissiveIntensity = 2.4;
+    terminal.halo.intensity = 9;
+  } else {
+    terminal.ecran.material.emissive.setHex(COULEUR_TERMINAL_ETEINT);
+    terminal.ecran.material.emissiveIntensity = 0.4;
+    terminal.halo.intensity = 1.4;
+  }
 }
 
 // Les deux poches.
@@ -1967,7 +1998,22 @@ function majDonjon() {
     }
   }
 
-  if (salleCourante.terminal && terminalDelai <= 0) {
+  // Le terminal ne repond QUE sur une salle nettoyee.
+  //
+  // Le joueur signala que la boutique s ouvrait en plein combat. C etait
+  // visible parce que la condition existait pour le portail et pas pour le
+  // terminal : les deux se declenchent au contact, un seul regardait si la
+  // salle etait videe.
+  //
+  // Ce n est pas qu une question de regle. Sans cette condition, on peut
+  // acheter et revendre en boucle pendant qu on se bat, ce qui transforme
+  // une decision en reflexe. Et on achete dans un etat ou l on ne sait pas
+  // encore si l on survit a l etage.
+  //
+  // Le portail reste, lui, conditionne a salleCourante.ouverte pour une
+  // raison inverse : il ouvre la salle suivante, donc il n a de sens que
+  // lorsque celle-ci est finie.
+  if (salleCourante.terminal && salleCourante.ouverte && terminalDelai <= 0) {
     const dx = x - salleCourante.terminal.x;
     const dz = z - salleCourante.terminal.z;
     if (dx * dx + dz * dz < TERMINAL_PORTEE * TERMINAL_PORTEE) {
@@ -7380,6 +7426,10 @@ function ouvrirPortail() {
   portail.voile.material.color.setHex(COULEUR_PORTAIL_OUVERT);
   portail.voile.material.opacity = 0.46;
   salleCourante.ouverte = true;
+  // Le terminal s allume avec le portail. Les deux marquent un evenement :
+  // la salle est finie, donc la boutique devient accessible. Sans cet appel, le
+  // terminal resterait eteint et le joueur ne pourrait plus acheter.
+  appliquerEtatTerminal(true);
   abilityMessage = 'SALLE NETTOYEE // PORTAIL OUVERT';
   abilityMessageTimer = 2.6;
 }
@@ -8850,7 +8900,11 @@ window.__nexus.blesserJoueur = (fraction) => {
         ? { x: salleCourante.portail.x, z: salleCourante.portail.z }
         : null,
       terminal: salleCourante.terminal
-        ? { x: salleCourante.terminal.x, z: salleCourante.terminal.z }
+        ? { x: salleCourante.terminal.x, z: salleCourante.terminal.z,
+          // Le terminal visible ne dit pas s il repond. Ce detail a son importance :
+          // un test qui verrait seulement sa presence passerait, alors que le
+          // defaut signale etait precisement la boutique accessible trop tot.
+          actif: salleCourante.terminal.actif === true }
         : null,
       ennemis: enemies.length,
       // Les compteurs de vague expliquent pourquoi un portail s ouvre ou non :
