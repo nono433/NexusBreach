@@ -7674,6 +7674,65 @@ function startNewGame() {
 // la salle d avant disparait derriere lui et la suivante est tiree.
 // startWave se charge de la construire : c'est lui qui sait a quel palier on
 // est, et le construire ici comme la une fois ferait deux salles par palier.
+// Replace le joueur sur un sol degage, et garantit qu il ne reste pas bloque.
+//
+// Deux defauts evidents, tous deux absents.
+//
+// Le premier : la salle d avant disparait et la suivante est tiree. Les murs, les
+// blocs et les piliers sont a d AUTRES coordonnees. Laisser le joueur la ou il
+// etait, c est-a-dire a l ancien portail, revient a le laisser tomber au hasard
+// dans une salle qui ne lui ressemble pas.
+//
+// Le second, et c est lui qui rend le premier irrattrapable : moveEntity ne
+// teste que la DESTINATION. Depuis le centre d un bloc, toute destination
+// proche reste dans le bloc, donc toutes les directions sont refusees. Le
+// joueur est bloque, et aucun appui sur une touche ne le fera bouger. C etait
+// le bug signale : on descendait au palier 2 et on ne pouvait plus avancer.
+//
+// Ce n etait PAS un bug de camera. La camera est a la position du joueur : le
+// robot qui occupe l ecran est un ennemi qui s est approche au contact, parce
+// qu il pouvait s approcher et pas s ecarter.
+//
+// On ne fait pas confiance au generateur pour cette place. horsArrivee garantit
+// qu aucun bloc n entre dans un rayon de cinq autour de l arrivee, mais cette
+// regle est verifiee sur des rectangles et avec les regles du generateur. Elle
+// est repetee ici avec isBlocked, donc avec les regles du jeu — la meme
+// distinction qui avait permis a des ennemis de se retrouver dans les murs.
+function poserJoueurDegenere(x, z) {
+  player.position.set(x, CONFIG.playerEyeHeight, z);
+  player.velocity.set(0, 0, 0);
+}
+
+// Le point d arrivee normal. Il ne devrait jamais etre refuse : le generateur
+// reserve deja cette zone. La spirale n existe que pour le cas ou, et elle est
+// ordonnee plutot qu aleatoire afin qu un refus eventuel soit reproductible.
+function placerJoueurALArrivee() {
+  const rayon = CONFIG.playerRadius;
+  if (!isBlocked(ARRIVEE.x, ARRIVEE.z, rayon)) {
+    poserJoueurDegenere(ARRIVEE.x, ARRIVEE.z);
+    return 'arrivee';
+  }
+  // On eloigne le joueur du point refuse par anneaux. Legerement decale, sinon
+  // douze candidats d un meme annee tomberaient sur les memes positions
+  // d obstacle.
+  for (let anneau = 1; anneau <= 8; anneau += 1) {
+    for (let i = 0; i < 12; i += 1) {
+      const angle = (i / 12) * Math.PI * 2 + anneau * 0.4;
+      const x = ARRIVEE.x + Math.cos(angle) * anneau;
+      const z = ARRIVEE.z + Math.sin(angle) * anneau;
+      if (!isBlocked(x, z, rayon)) {
+        poserJoueurDegenere(x, z);
+        return 'spirale-' + anneau;
+      }
+    }
+  }
+  // Dernier recours : le centre exact de la salle. Il ne peut pas etre bloque
+  // lui aussi sans que la generation soit entierement fausse, mais on ne veut
+  // pas demarrer une salle avec un joueur immobile sans l avoir dit.
+  poserJoueurDegenere(0, 0);
+  return 'centre';
+}
+
 function salleSuivante() {
   donjonPalier += 1;
   // L'argent NE se remet PAS a zero ici. Il appartient a la descente, pas a la
@@ -7684,7 +7743,19 @@ function salleSuivante() {
   // Une salle neuve, un terminal neuf : le delai de reouverture ne doit pas
   // deborder sur la salle suivante, sinon son terminal serait muet.
   terminalDelai = 0;
+  // La construction d'abord, le placement ensuite. isBlocked lit la liste des
+  // obstacles : placer le joueur AVANT que la salle soit construite le
+  // validerait contre les blocs du palier precedent, qui viennent d etre
+  // demolis. C est le meme piege que celui du champ de deplacement reconstruit
+  // une image trop tard, et pour les ennemis.
   startWave();
+  const ou = placerJoueurALArrivee();
+  if (ou !== 'arrivee') {
+    // Mere d etre dit : une spirale qui s active signifie que le generateur et
+    // le jeu ne sont pas d accord sur ce qu est libre.
+    console.warn('donjon : arrivee occupee au palier ' + (donjonPalier + 1)
+      + ', joueur pose en ' + ou);
+  }
 }
 
 function setHudText(element, value) {
@@ -8559,6 +8630,25 @@ function init() {
     // modifierait player.donjon directement verifierait qu'il sait ecrire dans
     // un objet, pas que la boutique fonctionne.
     window.__nexus.acheterAmelioration = (id) => acheterAmeliorationDonjon(id);
+    // Ou est le joueur, et est-ce qu il peut bouger.
+    //
+    // Le test ne doit pas se contenter de verifier qu il n est pas dans un
+    // bloc : le symptome signale est « je ne peux plus bouger », qui peut avoir
+    // une autre cause qu un blocage. bouge passe par moveEntity, la fonction
+    // REELLE du deplacement, pas par une reconstitution. Un test qui simuleait
+    // le mouvement avec ses propres regles prouverait que ses regles marchent.
+    window.__nexus.etatJoueur = (dx = 0, dz = 0) => {
+      const avantX = player.position.x;
+      const avantZ = player.position.z;
+      if (dx || dz) moveEntity(player.position, dx, dz, CONFIG.playerRadius);
+      const deplace = Math.hypot(player.position.x - avantX, player.position.z - avantZ);
+      return {
+        x: Number(player.position.x.toFixed(2)),
+        z: Number(player.position.z.toFixed(2)),
+        bloque: isBlocked(player.position.x, player.position.z, CONFIG.playerRadius),
+        deplace: Number(deplace.toFixed(3))
+      };
+    };
     // De l'argent de run, pour les tests qui doivent acheter.
     //
     // Il passe par la meme variable que les eliminations, de sorte qu'un test
